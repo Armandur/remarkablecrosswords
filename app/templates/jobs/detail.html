@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Jobb #{{ job.id }}</h1>
+<p>Typ: {{ job.kind }}</p>
+<p>Status: {{ job.state }}</p>
+<p>Startad: {{ job.started_at }}</p>
+<p>Färdig: {{ job.finished_at }}</p>
+
+<h2>Logg</h2>
+<pre style="background: #eee; padding: 1rem; overflow: auto;">{{ job.log }}</pre>
+
+<a href="/jobs">Tillbaka till listan</a>
+{% endblock %}

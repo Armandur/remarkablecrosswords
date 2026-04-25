@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ny källa</h1>
+<form action="/sources" method="POST">
+    <label>Namn:</label>
+    <input type="text" name="name" required placeholder="t.ex. Sverigekrysset">
+    <label>Typ:</label>
+    <select name="kind">
+        <option value="korsordio">korsord.io</option>
+        <option value="prenly">Prenly</option>
+    </select>
+    <br><br>
+    <label>Schedule (cron):</label>
+    <input type="text" name="schedule_cron" placeholder="30 6 * * 1">
+    <label>reMarkable Prefix:</label>
+    <input type="text" name="prefix" placeholder="Sverigekrysset">
+    <label>Config JSON:</label>
+    <textarea name="config_json" style="width: 100%; height: 100px;">{"slug": "sverigekrysset"}</textarea>
+    <br><br>
+    <button type="submit">Spara</button>
+</form>
+{% endblock %}

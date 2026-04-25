@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Inställningar</h1>
+
+<h2>reMarkable</h2>
+<p>Aktiv klient: <strong>{{ remarkable_client }}</strong></p>
+
+<h2>Notifieringar</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Typ</th>
+            <th>Konfig</th>
+            <th>Status</th>
+            <th>Åtgärder</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for target in targets %}
+        <tr>
+            <td>{{ target.kind }}</td>
+            <td><code>{{ target.config_json }}</code></td>
+            <td>{% if target.enabled %}Aktiv{% else %}Inaktiv{% endif %}</td>
+            <td>
+                <form action="/settings/notifications/{{ target.id }}/toggle" method="POST" style="display:inline">
+                    <button type="submit">Växla</button>
+                </form>
+                <form action="/settings/notifications/{{ target.id }}/delete" method="POST" style="display:inline">
+                    <button type="submit" style="color: red;">Ta bort</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h3>Lägg till notifiering</h3>
+<form action="/settings/notifications" method="POST">
+    <label>Typ:</label>
+    <select name="kind">
+        <option value="ntfy">ntfy</option>
+    </select>
+    <label>Config JSON:</label>
+    <input type="text" name="config_json" value='{"url": "https://ntfy.sh/my-secret-topic"}'>
+    <button type="submit">Lägg till</button>
+</form>
+{% endblock %}

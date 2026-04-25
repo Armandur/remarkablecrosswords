@@ -1,0 +1,15 @@
+services:
+  app:
+    image: ghcr.io/armandur/remarkablecrosswords:latest
+    restart: unless-stopped
+    volumes:
+      - /mnt/user/appdata/remarkablecrosswords/data:/app/data
+      - /mnt/user/appdata/remarkablecrosswords/rmapi:/root/.config/rmapi:ro
+      - /mnt/user/remarkablecrosswords/queue:/app/queue
+    env_file: .env
+    networks:
+      - nginx_net
+
+networks:
+  nginx_net:
+    external: true

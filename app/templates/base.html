@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>remarkablecrosswords</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; margin: 0; padding: 0; }
+        nav { background: #333; color: #fff; padding: 1rem; }
+        nav a { color: #fff; margin-right: 1rem; text-decoration: none; }
+        nav a:hover { text-decoration: underline; }
+        main { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        .nav-right { float: right; }
+        form { max-width: 400px; }
+        input { display: block; width: 100%; padding: 0.5rem; margin-bottom: 1rem; }
+        button { padding: 0.5rem 1rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Dashboard</a>
+        <a href="/sources">Källor</a>
+        <a href="/crosswords">Korsord</a>
+        <a href="/jobs">Loggar</a>
+        <a href="/settings">Inställningar</a>
+        <div class="nav-right">
+            <a href="#" onclick="logout()">Logga ut</a>
+        </div>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        async function logout() {
+            const resp = await fetch('/api/logout', { method: 'POST' });
+            if (resp.ok) window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

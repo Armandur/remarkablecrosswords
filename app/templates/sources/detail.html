@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ source.name }}</h1>
+<p>Typ: {{ source.kind }}</p>
+<p>Status: {% if source.enabled %}Aktiv{% else %}Inaktiv{% endif %}</p>
+<p>Cron: {{ source.schedule_cron }}</p>
+<p>Prefix: {{ source.prefix }}</p>
+<pre>{{ source.config_json }}</pre>
+
+<form action="/sources/{{ source.id }}/run" method="POST" style="display:inline">
+    <button type="submit">Kör nu</button>
+</form>
+
+<form action="/sources/{{ source.id }}/toggle" method="POST" style="display:inline">
+    <button type="submit">{% if source.enabled %}Inaktivera{% else %}Aktivera{% endif %}</button>
+</form>
+
+<form action="/sources/{{ source.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('Är du säker?')">
+    <button type="submit" style="color: red;">Ta bort</button>
+</form>
+{% endblock %}

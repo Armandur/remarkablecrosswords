@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Logga in</h2>
+<p id="error" style="color: red; display: none;"></p>
+<form onsubmit="doLogin(event)">
+    <label>Användarnamn</label>
+    <input type="text" id="username" required autocomplete="username">
+    
+    <label>Lösenord</label>
+    <input type="password" id="password" required autocomplete="current-password">
+    
+    <button type="submit">Logga in</button>
+</form>
+
+<script>
+async function doLogin(e) {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    errorEl.style.display = 'none';
+    
+    const body = {
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value
+    };
+    
+    try {
+        const resp = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        
+        if (resp.ok) {
+            window.location.href = '/';
+        } else {
+            const data = await resp.json();
+            errorEl.innerText = data.detail || 'Inloggning misslyckades';
+            errorEl.style.display = 'block';
+        }
+    } catch (err) {
+        errorEl.innerText = 'Ett nätverksfel uppstod';
+        errorEl.style.display = 'block';
+    }
+}
+// Dölj nav vid login (enkel variant)
+document.querySelector('nav').style.display = 'none';
+</script>
+{% endblock %}

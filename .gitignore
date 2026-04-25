@@ -23,3 +23,12 @@ rmapi.conf
 
 # tmp/gemini per global riktlinje
 tmp/gemini/
+
+# Appdata – DB och PDF-arkiv
+data/
+
+# Dev-logg (uvicorn-output)
+dev.log
+
+# Env-filer
+.env

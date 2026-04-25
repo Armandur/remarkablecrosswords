@@ -1,0 +1,202 @@
+import datetime
+import logging
+import traceback
+from pathlib import Path
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy.orm import Session
+
+from app.config import ENABLE_SCHEDULER, REMARKABLE_FOLDER
+from app.database import Crossword, Issue, Job, SessionLocal, Source
+from app.services.notifier import get_notifiers
+from app.services.remarkable import get_remarkable_client
+from app.services.sources import SOURCE_KINDS
+
+logger = logging.getLogger(__name__)
+
+def sync_pending(db: Session):
+    crosswords = db.query(Crossword).filter(Crossword.synced_at == None).all()
+    if not crosswords:
+        return False
+
+    client = get_remarkable_client()
+    if not client.check():
+        logger.warning("Remarkable client check failed, skipping sync")
+        return False
+
+    any_synced = False
+    for cw in crosswords:
+        issue = db.query(Issue).filter(Issue.id == cw.issue_id).first()
+        source = db.query(Source).filter(Source.id == issue.source_id).first()
+        
+        remote_folder = REMARKABLE_FOLDER
+        if source.prefix:
+            remote_folder = str(Path(REMARKABLE_FOLDER) / source.prefix.lstrip("/"))
+            
+        job = Job(kind='sync', state='running', source_id=source.id, issue_id=issue.id)
+        db.add(job)
+        db.commit()
+        
+        try:
+            client.ensure_folder(remote_folder)
+            remote_path = client.upload(Path(cw.pdf_path), remote_folder)
+            
+            cw.synced_at = datetime.datetime.utcnow()
+            cw.remarkable_path = remote_path
+            job.state = 'done'
+            job.finished_at = datetime.datetime.utcnow()
+            any_synced = True
+        except Exception as e:
+            job.state = 'failed'
+            job.finished_at = datetime.datetime.utcnow()
+            job.log = traceback.format_exc()
+            logger.exception(f"Failed to sync crossword {cw.id}: {e}")
+        
+        db.commit()
+    
+    return any_synced
+
+def sync_single_crossword(db: Session, crossword_id: int):
+    cw = db.query(Crossword).filter(Crossword.id == crossword_id).first()
+    if not cw:
+        return False
+
+    client = get_remarkable_client()
+    if not client.check():
+        return False
+
+    issue = db.query(Issue).filter(Issue.id == cw.issue_id).first()
+    source = db.query(Source).filter(Source.id == issue.source_id).first()
+    
+    remote_folder = REMARKABLE_FOLDER
+    if source.prefix:
+        remote_folder = str(Path(REMARKABLE_FOLDER) / source.prefix.lstrip("/"))
+        
+    job = Job(kind='sync', state='running', source_id=source.id, issue_id=issue.id)
+    db.add(job)
+    db.commit()
+    
+    success = False
+    try:
+        client.ensure_folder(remote_folder)
+        remote_path = client.upload(Path(cw.pdf_path), remote_folder)
+        
+        cw.synced_at = datetime.datetime.utcnow()
+        cw.remarkable_path = remote_path
+        job.state = 'done'
+        job.finished_at = datetime.datetime.utcnow()
+        success = True
+    except Exception as e:
+        job.state = 'failed'
+        job.finished_at = datetime.datetime.utcnow()
+        job.log = traceback.format_exc()
+        logger.exception(f"Failed to sync crossword {cw.id}: {e}")
+    
+    db.commit()
+    return success
+
+def run_pipeline_for_source(source_id: int):
+    db = SessionLocal()
+    try:
+        source = db.query(Source).filter(Source.id == source_id).first()
+        if not source or not source.enabled:
+            return
+
+        fetcher = SOURCE_KINDS.get(source.kind)
+        if not fetcher:
+            logger.error(f"Unknown source kind: {source.kind}")
+            return
+
+        available = fetcher.list_available(source)
+        new_issues_count = 0
+        
+        for ext_issue in available:
+            existing = db.query(Issue).filter(
+                Issue.source_id == source.id,
+                Issue.external_id == ext_issue.external_id
+            ).first()
+            
+            if existing:
+                continue
+
+            job = Job(kind='download', state='running', source_id=source.id)
+            db.add(job)
+            db.commit()
+            
+            try:
+                pdf_path = fetcher.download(source, ext_issue)
+                
+                issue = Issue(
+                    source_id=source.id,
+                    external_id=ext_issue.external_id,
+                    name=ext_issue.name,
+                    published_at=ext_issue.published_at,
+                    pdf_path=str(pdf_path),
+                    downloaded_at=datetime.datetime.utcnow(),
+                    state='downloaded'
+                )
+                db.add(issue)
+                db.flush() # get issue.id
+                
+                cw = Crossword(
+                    issue_id=issue.id,
+                    pdf_path=str(pdf_path),
+                    extracted_at=datetime.datetime.utcnow()
+                )
+                db.add(cw)
+                
+                job.issue_id = issue.id
+                job.state = 'done'
+                job.finished_at = datetime.datetime.utcnow()
+                new_issues_count += 1
+            except Exception as e:
+                job.state = 'failed'
+                job.finished_at = datetime.datetime.utcnow()
+                job.log = traceback.format_exc()
+                logger.exception(f"Failed to download issue {ext_issue.external_id}: {e}")
+            
+            db.commit()
+
+        synced = sync_pending(db)
+        
+        if synced:
+            notifiers = get_notifiers(db)
+            for n in notifiers:
+                n.send(
+                    title="Nya korsord synkade",
+                    message=f"Synkade {new_issues_count} nya korsord till din reMarkable."
+                )
+                
+    except Exception as e:
+        logger.exception(f"Pipeline failed for source {source_id}: {e}")
+    finally:
+        db.close()
+
+def setup_scheduler(app=None):
+    scheduler = BackgroundScheduler()
+    if not ENABLE_SCHEDULER:
+        logger.info("Scheduler is disabled via ENABLE_SCHEDULER")
+        return scheduler
+
+    db = SessionLocal()
+    try:
+        sources = db.query(Source).filter(Source.enabled == True, Source.schedule_cron != None).all()
+        for source in sources:
+            try:
+                trigger = CronTrigger.from_crontab(source.schedule_cron)
+                scheduler.add_job(
+                    run_pipeline_for_source,
+                    trigger=trigger,
+                    args=[source.id],
+                    id=f"source_{source.id}",
+                    replace_existing=True
+                )
+                logger.info(f"Scheduled job for source {source.name} ({source.id}) with cron {source.schedule_cron}")
+            except Exception as e:
+                logger.error(f"Failed to schedule job for source {source.id}: {e}")
+    finally:
+        db.close()
+
+    scheduler.start()
+    return scheduler

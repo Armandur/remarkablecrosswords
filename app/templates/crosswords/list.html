@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Korsord</h1>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Källa</th>
+            <th>Namn</th>
+            <th>Synkad</th>
+            <th>Åtgärder</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for cw, issue, source in crosswords %}
+        <tr>
+            <td>{{ cw.id }}</td>
+            <td>{{ source.name }}</td>
+            <td>{{ issue.name }}</td>
+            <td>{% if cw.synced_at %}{{ cw.synced_at }}{% else %}Nej{% endif %}</td>
+            <td>
+                <form action="/crosswords/{{ cw.id }}/sync" method="POST" style="display:inline">
+                    <button type="submit">Synka</button>
+                </form>
+                <a href="/crosswords/{{ cw.id }}/download">Ladda ner</a>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

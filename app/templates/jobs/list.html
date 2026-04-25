@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Loggar (Jobb)</h1>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Typ</th>
+            <th>Status</th>
+            <th>Startad</th>
+            <th>Färdig</th>
+            <th>Länk</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for job in jobs %}
+        <tr>
+            <td>{{ job.id }}</td>
+            <td>{{ job.kind }}</td>
+            <td>{{ job.state }}</td>
+            <td>{{ job.started_at }}</td>
+            <td>{{ job.finished_at }}</td>
+            <td><a href="/jobs/{{ job.id }}">Detaljer</a></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<div>
+    {% if offset > 0 %}
+    <a href="/jobs?offset={{ [0, offset - limit]|max }}&limit={{ limit }}">Föregående</a>
+    {% endif %}
+    {% if offset + limit < total %}
+    <a href="/jobs?offset={{ offset + limit }}&limit={{ limit }}">Nästa</a>
+    {% endif %}
+</div>
+{% endblock %}

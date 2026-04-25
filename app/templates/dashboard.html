@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<p>Antal korsord väntande synk: <strong>{{ pending_sync_count }}</strong></p>
+
+<h2>Aktiva källor</h2>
+<ul>
+{% for source in active_sources %}
+    <li>
+        {{ source.name }} ({{ source.kind }})
+        <form action="/sources/{{ source.id }}/run" method="POST" style="display:inline">
+            <button type="submit">Kör nu</button>
+        </form>
+    </li>
+{% endfor %}
+</ul>
+
+<h2>Senaste jobb</h2>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Typ</th>
+            <th>Startad</th>
+            <th>Status</th>
+            <th>Länk</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for job in latest_jobs %}
+        <tr>
+            <td>{{ job.id }}</td>
+            <td>{{ job.kind }}</td>
+            <td>{{ job.started_at }}</td>
+            <td>{{ job.state }}</td>
+            <td><a href="/jobs/{{ job.id }}">Visa</a></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

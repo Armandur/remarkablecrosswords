@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Källor</h1>
+<a href="/sources/new">Ny källa</a>
+<ul>
+{% for source in sources %}
+    <li>
+        <a href="/sources/{{ source.id }}">{{ source.name }}</a> 
+        ({{ source.kind }}, {% if source.enabled %}Aktiv{% else %}Inaktiv{% endif %})
+    </li>
+{% endfor %}
+</ul>
+{% endblock %}
