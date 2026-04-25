@@ -70,7 +70,8 @@ illustrationer).
 ### `colors`
 
 Färger angivna i CMYK för tryck. Web-klienten verkar ignorera dem
-(allt visas vitt). För reMarkable-rendering kan de ignoreras.
+(allt visas vitt) — i de flesta render-scenarier kan de ignoreras
+till förmån för en vit grund.
 
 ```json
 "colors": {
@@ -339,7 +340,10 @@ G = 255 * (1 - M) * (1 - K)
 B = 255 * (1 - Y) * (1 - K)
 ```
 
-För reMarkable är detta sällan relevant — e-paper är monochrome och
-allt bör renderas vitt med svarta linjer. Lösningsrutor markeras med
-ljust turkos `#b8e6e6` (matchar webb-klientens utseende, syns även
-på reMarkable Color/Pro).
+CMYK→RGB-konverteringen är sällan relevant i praktiken — webb-
+klienten ignorerar dem och renderar med fasta accent-färger.
+Standardval som matchar webb-klientens utseende:
+
+- SMS-svarsrutor (`smsIndex` ≠ null): ljust turkos `#b8e6e6`
+- Lösningsmenings-rutor (`color: "caption"`): ljust gul `#fff4a0`
+- Övrigt: vit bakgrund, svart 1 px-border
