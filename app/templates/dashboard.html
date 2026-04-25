@@ -39,7 +39,7 @@
                         <th>Åtgärd</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="jobs-tbody">
                 {% for job in latest_jobs %}
                     <tr>
                         <td>{{ job.id }}</td>
@@ -60,7 +60,7 @@
                     </tr>
                 {% endfor %}
                 {% if not latest_jobs %}
-                    <tr>
+                    <tr id="empty-row">
                         <td colspan="5" class="text-center text-muted py-3">Inga jobb hittades</td>
                     </tr>
                 {% endif %}
@@ -68,5 +68,139 @@
             </table>
         </div>
     </div>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+        <button id="jobs-prev" class="btn btn-sm btn-outline-secondary" disabled>&#8249; Föregående</button>
+        <span id="jobs-pager" class="text-muted small"></span>
+        <button id="jobs-next" class="btn btn-sm btn-outline-secondary" disabled>Nästa &#8250;</button>
+    </div>
 </div>
+
+<div class="card mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h2 class="h5 mb-0">Live-logg</h2>
+        <span id="terminal-live" class="badge bg-warning text-dark d-none">Live</span>
+    </div>
+    <div class="card-body p-0">
+        <div id="terminal" style="background:#002b36;color:#839496;font-family:Consolas,'SFMono-Regular','Liberation Mono',monospace;max-height:380px;overflow-y:auto;padding:1rem 1.2rem;white-space:pre-wrap;font-size:0.82rem;line-height:1.6;"></div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// ── Jobs-tabell med paginering ────────────────────────────────
+let jobsOffset = 0;
+const JOBS_LIMIT = 10;
+let jobsTotal = 0;
+
+function stateBadge(state) {
+    if (state === 'done') return '<span class="badge bg-success">Lyckades</span>';
+    if (state === 'failed') return '<span class="badge bg-danger">Misslyckades</span>';
+    if (state === 'running') return '<span class="badge bg-warning text-dark">Körs</span>';
+    return `<span class="badge bg-secondary">${state}</span>`;
+}
+
+function formatDt(iso) {
+    if (!iso) return '-';
+    return new Date(iso).toLocaleString('sv-SE');
+}
+
+async function refreshJobs() {
+    try {
+        const resp = await fetch(`/jobs/page?offset=${jobsOffset}&limit=${JOBS_LIMIT}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        jobsTotal = data.total;
+
+        const tbody = document.getElementById('jobs-tbody');
+        if (!tbody) return;
+        if (data.jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Inga jobb hittades</td></tr>';
+        } else {
+            tbody.innerHTML = data.jobs.map(j => `
+                <tr>
+                    <td>${j.id}</td>
+                    <td>${j.kind}</td>
+                    <td>${formatDt(j.started_at)}</td>
+                    <td>${stateBadge(j.state)}</td>
+                    <td><a href="/jobs/${j.id}" class="btn btn-sm btn-outline-secondary">Visa</a></td>
+                </tr>
+            `).join('');
+        }
+
+        const from = jobsTotal === 0 ? 0 : jobsOffset + 1;
+        const to = Math.min(jobsOffset + JOBS_LIMIT, jobsTotal);
+        document.getElementById('jobs-pager').textContent = jobsTotal > 0 ? `${from}–${to} av ${jobsTotal}` : '';
+        document.getElementById('jobs-prev').disabled = jobsOffset === 0;
+        document.getElementById('jobs-next').disabled = jobsOffset + JOBS_LIMIT >= jobsTotal;
+    } catch (e) {}
+}
+
+document.getElementById('jobs-prev').addEventListener('click', () => {
+    jobsOffset = Math.max(0, jobsOffset - JOBS_LIMIT);
+    refreshJobs();
+});
+document.getElementById('jobs-next').addEventListener('click', () => {
+    if (jobsOffset + JOBS_LIMIT < jobsTotal) {
+        jobsOffset += JOBS_LIMIT;
+        refreshJobs();
+    }
+});
+
+setInterval(refreshJobs, 4000);
+refreshJobs();
+
+// ── Live-terminal ─────────────────────────────────────────────
+const C = {
+    muted:  '#586e75',
+    blue:   '#268bd2',
+    green:  '#859900',
+    red:    '#dc322f',
+    cyan:   '#2aa198',
+    text:   '#839496',
+    yellow: '#b58900',
+};
+
+function stateColor(s) { return ({done: C.green, failed: C.red, running: C.cyan})[s] || C.muted; }
+function stateLabel(s) { return ({done: 'Lyckades', failed: 'Misslyckades', running: 'Körs...'})[s] || s; }
+function fmtTime(iso) { return iso ? new Date(iso).toLocaleString('sv-SE') : ''; }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderJob(j) {
+    const sc = stateColor(j.state);
+    const header =
+        `<span style="color:${C.muted}">── </span>` +
+        `<span style="color:${C.blue}">#${j.id} ${j.kind}</span>` +
+        `<span style="color:${C.muted}"> · ${fmtTime(j.started_at)} · </span>` +
+        `<span style="color:${sc}">${stateLabel(j.state)}</span>` +
+        `<span style="color:${C.muted}"> ──────────────────────</span>\n`;
+    const log = j.log ? `<span style="color:${C.text}">${esc(j.log)}</span>\n` : '';
+    return header + log;
+}
+
+let lastTerminalContent = '';
+
+async function refreshTerminal() {
+    const el = document.getElementById('terminal');
+    const liveEl = document.getElementById('terminal-live');
+    if (!el) return;
+    try {
+        const resp = await fetch('/jobs/terminal-log');
+        if (!resp.ok) return;
+        const jobs = await resp.json();
+
+        const content = jobs.map(renderJob).join('\n');
+        if (content === lastTerminalContent) return;
+        lastTerminalContent = content;
+
+        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+        el.innerHTML = content || `<span style="color:${C.muted}">(inga jobb ännu)</span>`;
+        if (atBottom) el.scrollTop = el.scrollHeight;
+
+        liveEl.classList.toggle('d-none', !jobs.some(j => j.state === 'running'));
+    } catch (e) {}
+}
+
+setInterval(refreshTerminal, 2000);
+refreshTerminal();
+</script>
 {% endblock %}

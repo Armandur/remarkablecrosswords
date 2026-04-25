@@ -24,6 +24,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="text-muted small d-block">Status</label>
+                    <span id="job-state-badge">
                     {% if job.state == 'done' %}
                         <span class="badge bg-success">Lyckades</span>
                     {% elif job.state == 'failed' %}
@@ -33,6 +34,7 @@
                     {% else %}
                         <span class="badge bg-secondary">{{ job.state }}</span>
                     {% endif %}
+                    </span>
                 </div>
                 <div class="mb-3">
                     <label class="text-muted small d-block">Startad</label>
@@ -40,7 +42,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="text-muted small d-block">Färdig</label>
-                    <span>{{ job.finished_at or '-' }}</span>
+                    <span id="job-finished-at">{{ job.finished_at or '-' }}</span>
                 </div>
             </div>
             <div class="card-footer bg-white">
@@ -48,16 +50,64 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-8 mb-4">
         <div class="card shadow-sm h-100">
-            <div class="card-header bg-white">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Logg</h5>
+                <span id="live-indicator" class="badge bg-warning text-dark d-none">Live</span>
             </div>
             <div class="card-body p-0">
-                <pre class="m-0 p-3 bg-dark text-light small" style="max-height: 500px; overflow-y: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">{{ job.log or '(ingen logg)' }}</pre>
+                <pre id="job-log" class="m-0 p-3 bg-dark text-light small" style="max-height: 500px; overflow-y: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">{{ job.log or '(ingen logg)' }}</pre>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const jobId = {{ job.id }};
+    const initialState = "{{ job.state }}";
+
+    if (initialState !== 'running') return;
+
+    const logEl = document.getElementById('job-log');
+    const badgeEl = document.getElementById('job-state-badge');
+    const finishedEl = document.getElementById('job-finished-at');
+    const liveEl = document.getElementById('live-indicator');
+
+    liveEl.classList.remove('d-none');
+
+    function stateBadge(state) {
+        if (state === 'done') return '<span class="badge bg-success">Lyckades</span>';
+        if (state === 'failed') return '<span class="badge bg-danger">Misslyckades</span>';
+        if (state === 'running') return '<span class="badge bg-warning text-dark">Körs</span>';
+        return `<span class="badge bg-secondary">${state}</span>`;
+    }
+
+    let timer;
+    async function poll() {
+        try {
+            const resp = await fetch(`/jobs/${jobId}/status`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            logEl.textContent = data.log || '(ingen logg)';
+            logEl.scrollTop = logEl.scrollHeight;
+            badgeEl.innerHTML = stateBadge(data.state);
+
+            if (data.state !== 'running') {
+                clearInterval(timer);
+                liveEl.classList.add('d-none');
+                if (data.finished_at) {
+                    finishedEl.textContent = new Date(data.finished_at).toLocaleString('sv-SE');
+                }
+            }
+        } catch (e) {}
+    }
+
+    timer = setInterval(poll, 2000);
+})();
+</script>
 {% endblock %}

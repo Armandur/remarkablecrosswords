@@ -2,6 +2,42 @@
 {% block content %}
 <h1 class="mb-4">Loggar (Jobb)</h1>
 
+<form method="get" action="/jobs" class="card shadow-sm mb-4">
+    <div class="card-body py-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label text-muted small mb-1">Status</label>
+                <select name="state" class="form-select form-select-sm">
+                    <option value="" {% if not filter_state %}selected{% endif %}>Alla</option>
+                    <option value="running" {% if filter_state == 'running' %}selected{% endif %}>Körs</option>
+                    <option value="done" {% if filter_state == 'done' %}selected{% endif %}>Lyckades</option>
+                    <option value="failed" {% if filter_state == 'failed' %}selected{% endif %}>Misslyckades</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label text-muted small mb-1">Typ</label>
+                <select name="kind" class="form-select form-select-sm">
+                    <option value="" {% if not filter_kind %}selected{% endif %}>Alla</option>
+                    <option value="download" {% if filter_kind == 'download' %}selected{% endif %}>download</option>
+                    <option value="sync" {% if filter_kind == 'sync' %}selected{% endif %}>sync</option>
+                    <option value="rerender" {% if filter_kind == 'rerender' %}selected{% endif %}>rerender</option>
+                    <option value="notify" {% if filter_kind == 'notify' %}selected{% endif %}>notify</option>
+                </select>
+            </div>
+            <div class="col">
+                <label class="form-label text-muted small mb-1">Sök i logg</label>
+                <input type="text" name="q" value="{{ filter_q }}" class="form-control form-control-sm" placeholder="Fritext...">
+            </div>
+            <div class="col-auto d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary">Filtrera</button>
+                {% if filter_state or filter_kind or filter_q %}
+                <a href="/jobs" class="btn btn-sm btn-outline-secondary">Rensa</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</form>
+
 <div class="card shadow-sm mb-4">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -16,7 +52,7 @@
                         <th class="text-end">Åtgärd</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="jobs-tbody">
                 {% for job in jobs %}
                     <tr>
                         <td class="align-middle"><code>#{{ job.id }}</code></td>
@@ -54,18 +90,68 @@
 <nav aria-label="Job pagination">
   <ul class="pagination justify-content-center">
     <li class="page-item {% if offset == 0 %}disabled{% endif %}">
-      <a class="page-link" href="/jobs?offset={{ [0, offset - limit]|max }}&limit={{ limit }}">Föregående</a>
+      <a class="page-link" href="/jobs?{{ base_params }}&offset={{ [0, offset - limit]|max }}">Föregående</a>
     </li>
     <li class="page-item disabled">
       <span class="page-link text-dark">
-        Visar {{ offset + 1 }}-{{ [offset + limit, total]|min }} av {{ total }}
+        Visar {{ offset + 1 }}–{{ [offset + limit, total]|min }} av {{ total }}
       </span>
     </li>
     <li class="page-item {% if offset + limit >= total %}disabled{% endif %}">
-      <a class="page-link" href="/jobs?offset={{ offset + limit }}&limit={{ limit }}">Nästa</a>
+      <a class="page-link" href="/jobs?{{ base_params }}&offset={{ offset + limit }}">Nästa</a>
     </li>
   </ul>
 </nav>
 {% endif %}
 
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    const offset = parseInt(params.get('offset') || '0');
+    const limit = parseInt(params.get('limit') || '20');
+    const state = params.get('state') || '';
+    const kind = params.get('kind') || '';
+    const q = params.get('q') || '';
+
+    function stateBadge(s) {
+        if (s === 'done') return '<span class="badge bg-success">Lyckades</span>';
+        if (s === 'failed') return '<span class="badge bg-danger">Misslyckades</span>';
+        if (s === 'running') return '<span class="badge bg-warning text-dark">Körs</span>';
+        return `<span class="badge bg-secondary">${s}</span>`;
+    }
+
+    function formatDt(iso) {
+        return iso ? new Date(iso).toLocaleString('sv-SE') : '-';
+    }
+
+    async function refresh() {
+        try {
+            const url = `/jobs/page?offset=${offset}&limit=${limit}&state=${encodeURIComponent(state)}&kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(q)}`;
+            const resp = await fetch(url);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const tbody = document.getElementById('jobs-tbody');
+            if (!tbody) return;
+            if (data.jobs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Inga jobb hittades</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.jobs.map(j => `
+                <tr>
+                    <td class="align-middle"><code>#${j.id}</code></td>
+                    <td class="align-middle">${j.kind}</td>
+                    <td class="align-middle">${stateBadge(j.state)}</td>
+                    <td class="align-middle text-muted small">${formatDt(j.started_at)}</td>
+                    <td class="align-middle text-muted small">${formatDt(j.finished_at)}</td>
+                    <td class="text-end align-middle"><a href="/jobs/${j.id}" class="btn btn-sm btn-outline-secondary">Detaljer</a></td>
+                </tr>
+            `).join('');
+        } catch (e) {}
+    }
+
+    setInterval(refresh, 4000);
+})();
+</script>
 {% endblock %}
