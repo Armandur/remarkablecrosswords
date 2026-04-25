@@ -24,8 +24,10 @@ cloud-API-bygge.
 styrbara från ett webb-UI:
 
 1. **Hämta** — beroende på källtyp:
-   - korsord.io → öppna URL med headless Chromium, exportera till PDF
-     (sidan är redan ett färdigt korsord)
+   - korsord.io → använd egna `korsordio`-modulen (i samma repo) som
+     hämtar `.crossword`-JSON och renderar SVG/PDF helt själv. Ingen
+     Chromium, ingen Playwright. Modulen är self-contained och kan
+     brytas ut till eget repo senare.
    - Prenly → ladda ner tidnings-PDF (logik från prenly-dl)
 2. **Extrahera** — bara för Prenly-källor: plocka ut
    korsordssidorna ur tidnings-PDF:en. Hoppas över för korsord.io.
@@ -56,13 +58,12 @@ Externa beroenden i container:
   experimentellt stöd för reMarkables nya sync-protokoll, vilket
   reMarkable Pro använder). Statiskt linkad Go-binär kopieras in i
   imagen från release-artefakt.
-- `playwright` + Chromium för korsord.io (headless render → PDF).
-  Adderar ~300 MB i imagen men är den raka vägen. Som senare
-  optimering kan vi sniffa korsord.io:s JSON-API och rendera själva
-  — men inte i V1.
-- `pypdf` (efterföljaren till PyPDF2) + `pdfplumber` för
-  textextraktion ur digitala PDF:er (Prenly-flödet)
-- `requests`, `img2pdf`
+- `cairosvg` för PDF-export från `korsordio`-modulen. Fetch sker via
+  stdlib (`urllib`) — ingen `requests`-dep behövs för korsord.io-
+  flödet. Ingen Playwright, ingen Chromium (~300 MB sparat).
+- `pypdf` + `pdfplumber` för textextraktion ur Prenly-tidnings-
+  PDF:er (Prenly-flödet, fas 2).
+- `requests`, `img2pdf` (Prenly-flödet).
 
 **Ingen OCR/tesseract** — både Prenly och korsord.io ger digitala
 (textbaserade eller vector-baserade) PDF:er, så textextraktion
@@ -71,41 +72,48 @@ räcker. Skippar pdf2image/tesseract-beroenden helt.
 ## Arkitektur
 
 ```
-app/
+korsordio/             # self-contained modul (KLAR — kan brytas ut till eget repo)
+  __init__.py          # public API
+  fetch.py             # urllib-baserad fetch + Tävla-modal-skrapning
+  metadata.py          # parse_name → CrosswordMeta (titel, datum, vecka, tävlingsnr)
+  render.py            # SVG-byggare, text-fitting, pilrendering, footer-zoner
+  __main__.py          # CLI (argparse)
+  spec.md              # reverse-engineered datamodell
+  README.md
+app/                   # tjänsten — INTE byggt än
   main.py              # FastAPI-app, lifespan, scheduler-start, router-reg
   config.py            # konstanter, env, paths
   database.py          # SQLAlchemy-modeller + init_db()
   schemas.py           # Pydantic
-  auth.py              # session, bcrypt, CSRF
+  auth.py              # session, bcrypt
   deps.py              # FastAPI-dependencies
   scheduler.py         # APScheduler-konfig + jobs
   routes/
     __init__.py
     auth.py            # login/logout
-    sources.py         # CRUD: tidningar (publication-id, credentials, schema)
+    sources.py         # CRUD: källor (slug eller prenly-config)
     issues.py          # lista/visa nedladdade nummer + extraherade korsord
-    extraction.py      # regler för korsordsextrahering per källa
+    extraction.py      # regler för korsordsextrahering per källa (Prenly)
     sync.py            # status reMarkable, manuell trigger
     notifications.py   # konfig av notif-target, testskick
     jobs.py            # historik och loggar
   services/
     sources/
       __init__.py      # SOURCE_KINDS = {"korsordio": ..., "prenly": ...}
-      base.py          # SourceFetcher-protokoll: download_latest(source) -> list[Path]
-      korsordio.py     # Playwright: öppna /c/<slug>-<vecka>-<år>/, page.pdf()
+      base.py          # SourceFetcher-protokoll: list_available, download
+      korsordio.py     # tunn adapter runt ../korsordio-paketet
       prenly.py        # refaktorerad prenly-dl: getContextToken, getCatalogueIssues,
                        # getIssueJSON, getHashes, getPDF, download_issue()
     crossword.py       # extract_pages_by_rule(pdf, rule) -> Path (bara Prenly-flödet)
     remarkable.py      # wrapper kring rmapi: upload, ls, mkdir, ensure_folder
     notifier.py        # abstrakt Notifier + implementation (ntfy/Pushover/...)
   utils/
-    pdf.py             # pypdf-helpers (split, merge)
-    ocr.py             # pdf2image+pytesseract om OCR-strategi väljs
+    pdf.py             # pypdf-helpers (split, merge) — för Prenly-flödet
   templates/
   static/
 data/                  # gitignored
-  pdfs/incoming/       # hela tidnings-PDF:er
-  pdfs/crosswords/     # extraherade korsords-PDF:er, väntar på sync
+  pdfs/incoming/       # hela tidnings-PDF:er (Prenly)
+  pdfs/crosswords/     # renderade korsords-PDF:er, väntar på sync
   pdfs/synced/         # arkiv efter lyckad sync
   app.db
 ```
@@ -152,14 +160,19 @@ och avgöra om något redan är hämtat.
 
 #### `services/sources/korsordio.py`
 
-- `list_available(source)` — POST/GET mot `/g/<slug>/` och parsa
-  HTML för länkar `/c/<slug>-<vecka>-<år>/`. Returnerar lista med
-  vecka+år som `external_id`.
-- `download(source, ext_issue)` — Playwright launchar Chromium
-  headless, går till URL, väntar på att canvas/SVG renderats, kör
-  `page.pdf(format="A4", print_background=True)`. Sparar i
-  `data/pdfs/crosswords/`.
-- Inget extraktionssteg — PDF:en *är* korsordet redan.
+Tunn adapter runt `korsordio`-paketet (samma repo, men brytbart):
+
+- `list_available(source)` — GET mot `/g/<slug>/`, parsa
+  `/c/<slug>-<v>-<yy>/`-länkar. Returnerar lista med
+  `external_id="<v>-<yy>"`.
+- `download(source, ext_issue)` — anropar
+  `korsordio.fetch_crossword(slug, week, year)` + valfritt
+  `fetch_competition_info(...)` + `render_pdf(data, path,
+  sms_boxes=True, competition_info=info)`. PDF:en blir vector-
+  baserad och självgenererad — inget headless-browser-steg.
+- Filnamn använder `korsordio.parse_name(data["name"]).slug()`
+  för naturlig sortering: `sverigekrysset-2026-w17.pdf`.
+- Inget extraktionssteg — `render_pdf` ger ett färdigt korsord.
 
 #### `services/sources/prenly.py`
 
@@ -183,7 +196,7 @@ Båda fetchers körs synkront i background-tasks. Skippa om
 ### 2. Extrahering (`services/crossword.py`)
 
 **Bara för Prenly-källor.** Korsord.io-flödet hoppar över detta steg
-helt — PDF:en från Playwright är redan ett färdigt korsord.
+helt — `korsordio.render_pdf` ger redan ett färdigt korsord.
 
 Eftersom Prenly-PDF:erna är digitala (textbaserade) räcker
 `pdfplumber.extract_text()` per sida — ingen OCR.
@@ -362,13 +375,19 @@ Watchtower eller manuellt.
 
 ## Kritiska filer som påverkas / skapas
 
-Allt nytt — `~/workspace/remarkablecrosswords/` är tomt. Förebilder att
-återanvända kod-mönster från (inte importera direkt):
+`korsordio/` — **redan klar och commitad**. Modulen är self-contained
+(bara `cairosvg` som extern dep, urllib för fetch) och kan brytas ut
+till eget repo + PyPI-publicering när som helst.
+
+Resten är fortfarande nytt. Förebilder att återanvända kod-mönster
+från (inte importera direkt):
 
 - `/tmp/prenly-dl/prenly-dl.py:13-156` — Prenly-API-funktioner
 - `/tmp/zotero2remarkable_bridge/zrm/rmapi_shim.py:1-114` — rmapi-shim
 - `/tmp/zotero2remarkable_bridge/zrm/adapters/ReMarkableAPI.py:1-113` —
   upload/exists/download-mönster
+- `Armandur/svk-had-gravregister/app/auth.py` + `routes/auth.py` —
+  auth-mönster (bcrypt + Starlette SessionMiddleware)
 
 Förebilderna ska inte vendors:as utan portas in i `services/` med
 SQLite-konfiguration istället för JSON/YAML, och med async-vänliga
@@ -439,13 +458,16 @@ Test-suite (pytest):
 
 ## V1-prioritering (första iteration att bygga)
 
-För att få något fungerande snabbt — bygg i denna ordning, varje
-fas är komplett och kan demoköras innan nästa börjar:
+**Fas 0 — KLAR:** `korsordio`-modulen. Hämtar och renderar
+Sverigekrysset/Miljonkrysset till SVG/PDF. Verifierad mot 87 kryss
+(44 sverigekrysset + 43 miljonkrysset, v17 2025 – v17 2026).
+Inkluderar `--sms-boxes` och `--competition-info`-flaggor för fullt
+självservice-kryss på reMarkable.
 
-**Fas 1: korsord.io-only end-to-end** (enklare källan, ingen auth,
-inga extraktionsregler):
+**Fas 1 — korsord.io end-to-end via tjänsten:**
 1. FastAPI-skelett, SQLite, lifespan, auth-mönster från svk-had.
-2. `services/sources/base.py` + `services/sources/korsordio.py`.
+2. `services/sources/base.py` + `services/sources/korsordio.py`
+   (tunn adapter runt `korsordio`-paketet).
 3. `services/remarkable.py` med både `RmapiClient` och
    `LocalQueueClient`.
 4. `services/notifier.py` med `NtfyNotifier`.
@@ -454,14 +476,16 @@ inga extraktionsregler):
 7. Deploy mot TERVO2.
 
 Vid fas-1-slut ska du kunna lägga till en korsord.io-källa och få
-Sverigekrysset på reMarkable varje måndag morgon med ntfy-ping.
+Sverigekrysset på reMarkable varje måndag morgon med ntfy-ping och
+tävlingsinfo direkt på sidan.
 
-**Fas 2: Prenly-källor + extraktion:**
+**Fas 2 — Prenly-källor + extraktion:**
 8. `services/sources/prenly.py` (port av prenly-dl).
 9. `services/crossword.py` (textmatch + inlärd regel).
 10. UI för regelhantering och manuell sidavmarkering.
 
-**Fas 3: polish:**
+**Fas 3 — polish:**
 11. Fler notifierare (Discord-webhook är trivial att lägga till).
 12. Web Push om/när du vill ha det.
 13. Tests + CI.
+14. Bryt ut `korsordio` till eget repo + PyPI om modulen mognar.
