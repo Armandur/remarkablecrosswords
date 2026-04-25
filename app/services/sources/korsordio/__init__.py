@@ -25,14 +25,10 @@ class KorsordioFetcher(SourceFetcher):
         except Exception:
             return []
 
-        # Pattern: /c/sverigekrysset-17-26/
         pattern = rf"/c/({re.escape(slug)}-(\d+)-(\d+))/"
         matches = re.findall(pattern, html)
-        
+
         issues = []
-        # matches are (full_match, week, year)
-        # We want the 4 latest. matches usually come in order of appearance in HTML.
-        # Let's just take the first 4 if they look like links.
         seen_ids = set()
         for full_id, week, year in matches:
             ext_id = f"{week}-{year}"
@@ -45,33 +41,35 @@ class KorsordioFetcher(SourceFetcher):
                 seen_ids.add(ext_id)
             if len(issues) >= 4:
                 break
-        
+
         return issues
 
     def download(self, source: "Source", ext_issue: ExternalIssue) -> Path:
         config = json.loads(source.config_json)
         slug = config["slug"]
-        
-        # ext_issue.external_id is 'v-yy'
+        sms_boxes = config.get("sms_boxes", True)
+        fetch_competition = config.get("fetch_competition", True)
+
         match = re.match(r"(\d+)-(\d+)", ext_issue.external_id)
         if not match:
             raise ValueError(f"Invalid external_id: {ext_issue.external_id}")
-        
+
         week = int(match.group(1))
         year = int(match.group(2))
-        
+
         data = fetch_crossword(slug, week, year)
         meta = parse_name(data["name"])
-        
+
         info = None
-        try:
-            info = fetch_competition_info(slug, week, year)
-        except Exception:
-            pass # optional
-            
+        if fetch_competition:
+            try:
+                info = fetch_competition_info(slug, week, year)
+            except Exception:
+                pass
+
         PDF_CROSSWORDS_DIR.mkdir(parents=True, exist_ok=True)
         out_path = PDF_CROSSWORDS_DIR / (meta.slug() + ".pdf")
-        
-        render_pdf(data, out_path, sms_boxes=True, competition_info=info)
-        
+
+        render_pdf(data, out_path, sms_boxes=sms_boxes, competition_info=info)
+
         return out_path

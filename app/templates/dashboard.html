@@ -1,41 +1,72 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Dashboard</h1>
-<p>Antal korsord väntande synk: <strong>{{ pending_sync_count }}</strong></p>
+<h1 class="mb-4">Dashboard</h1>
 
-<h2>Aktiva källor</h2>
-<ul>
-{% for source in active_sources %}
-    <li>
-        {{ source.name }} ({{ source.kind }})
-        <form action="/sources/{{ source.id }}/run" method="POST" style="display:inline">
-            <button type="submit">Kör nu</button>
-        </form>
-    </li>
-{% endfor %}
-</ul>
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card h-100 border-primary">
+            <div class="card-body text-center">
+                <h5 class="card-title text-muted">Väntande korsord</h5>
+                <p class="display-4 fw-bold text-primary">{{ pending_sync_count }}</p>
+                <a href="/crosswords" class="btn btn-outline-primary btn-sm">Hantera korsord</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card h-100 border-success">
+            <div class="card-body text-center">
+                <h5 class="card-title text-muted">Aktiva källor</h5>
+                <p class="display-4 fw-bold text-success">{{ active_sources|length }}</p>
+                <a href="/sources" class="btn btn-outline-success btn-sm">Visa alla källor</a>
+            </div>
+        </div>
+    </div>
+</div>
 
-<h2>Senaste jobb</h2>
-<table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Typ</th>
-            <th>Startad</th>
-            <th>Status</th>
-            <th>Länk</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for job in latest_jobs %}
-        <tr>
-            <td>{{ job.id }}</td>
-            <td>{{ job.kind }}</td>
-            <td>{{ job.started_at }}</td>
-            <td>{{ job.state }}</td>
-            <td><a href="/jobs/{{ job.id }}">Visa</a></td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h2 class="h5 mb-0">Senaste jobb</h2>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Typ</th>
+                        <th>Startad</th>
+                        <th>Status</th>
+                        <th>Åtgärd</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for job in latest_jobs %}
+                    <tr>
+                        <td>{{ job.id }}</td>
+                        <td>{{ job.kind }}</td>
+                        <td>{{ job.started_at }}</td>
+                        <td>
+                            {% if job.state == 'done' %}
+                                <span class="badge bg-success">Lyckades</span>
+                            {% elif job.state == 'failed' %}
+                                <span class="badge bg-danger">Misslyckades</span>
+                            {% elif job.state == 'running' %}
+                                <span class="badge bg-warning text-dark">Körs</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ job.state }}</span>
+                            {% endif %}
+                        </td>
+                        <td><a href="/jobs/{{ job.id }}" class="btn btn-sm btn-outline-secondary">Visa</a></td>
+                    </tr>
+                {% endfor %}
+                {% if not latest_jobs %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-3">Inga jobb hittades</td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

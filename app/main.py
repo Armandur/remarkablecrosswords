@@ -13,7 +13,7 @@ from app.config import (
 )
 from app.database import init_db, SessionLocal
 from app.auth import ensure_first_admin
-from app.routes import auth, dashboard, sources, crosswords, jobs, settings
+from app.routes import auth, dashboard, sources, crosswords, jobs, settings, remarkable_api
 from app.scheduler import setup_scheduler
 
 @asynccontextmanager
@@ -58,3 +58,4 @@ app.include_router(sources.router, tags=["sources"])
 app.include_router(crosswords.router, tags=["crosswords"])
 app.include_router(jobs.router, tags=["jobs"])
 app.include_router(settings.router, tags=["settings"])
+app.include_router(remarkable_api.router, tags=["remarkable-api"])

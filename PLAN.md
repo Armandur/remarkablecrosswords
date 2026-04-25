@@ -465,15 +465,28 @@ Inkluderar `--sms-boxes` och `--competition-info`-flaggor för fullt
 självservice-kryss på reMarkable.
 
 **Fas 1 — korsord.io end-to-end via tjänsten:**
-1. FastAPI-skelett, SQLite, lifespan, auth-mönster från svk-had.
-2. `services/sources/base.py` + `services/sources/korsordio.py`
+1. ✅ FastAPI-skelett, SQLite, lifespan, auth-mönster från svk-had.
+2. ✅ `services/sources/base.py` + `services/sources/korsordio.py`
    (tunn adapter runt `korsordio`-paketet).
-3. `services/remarkable.py` med både `RmapiClient` och
+3. ✅ `services/remarkable.py` med både `RmapiClient` och
    `LocalQueueClient`.
-4. `services/notifier.py` med `NtfyNotifier`.
-5. Scheduler som kör pipelinen för korsord.io-källor.
-6. Minimal webb-UI: login, källista, "kör nu", jobblogg.
-7. Deploy mot TERVO2.
+4. ✅ `services/notifier.py` med `NtfyNotifier`.
+5. ✅ Scheduler som kör pipelinen för korsord.io-källor.
+6. ✅ Webb-UI: login, Bootstrap-styling, källista, korsordslista med
+   inline PDF-visning, jobblogg med paginering, inställningar.
+7. ✅ korsordio-flaggor (`sms_boxes`, `fetch_competition`) konfigurerbara
+   per källa via `config_json`.
+8. **rmapi-autentisering via webb-UI** — istället för `docker run -it`:
+   - Inställningssidan visar autentiseringsstatus (config-fil finns/saknas).
+   - Formulär för engångskod från `my.remarkable.com/device/desktop/connect`.
+   - Anropar reMarkable device-registration-API direkt (ingen interaktiv
+     rmapi-process) och skriver `rmapi.conf`.
+   - `RMAPI_CONFIG_PATH` konfigurerbar via env (default `~/.config/rmapi/rmapi.conf`).
+9. **CSRF-skydd på alla POST-formulär** — `itsdangerous`-signerat token
+   i hidden input, valideras i middleware eller per route.
+10. **"Test connection" per källtyp** — knapp i källformuläret som verifierar
+    slug/tokens utan att spara eller ladda ned.
+11. Deploy mot TERVO2 (efter att grund är solid).
 
 Vid fas-1-slut ska du kunna lägga till en korsord.io-källa och få
 Sverigekrysset på reMarkable varje måndag morgon med ntfy-ping och
