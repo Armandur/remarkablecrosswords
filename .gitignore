@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# Renderingsoutput från POC och korsordio
+poc/*.svg
+poc/*.pdf
+*.crossword
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Hemligheter och rmapi-config (inte här ännu, men förebygger)
+.env
+*.conf
+rmapi.conf
+
+# tmp/gemini per global riktlinje
+tmp/gemini/
