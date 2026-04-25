@@ -2,27 +2,41 @@
 
 ## Context
 
-Du läser dagstidningar via Prenly och vill ha tidningarnas korsord på din
-reMarkable Pro utan manuellt PDF-pyssel. Idag finns två fristående bitar:
+Du vill ha korsord på din reMarkable Pro utan manuellt PDF-pyssel.
+Korsorden kommer från två olika typer av källor:
 
-- **prenly-dl** (eget repo) — CLI som via Prenlys/Textalks reader-API
-  laddar ned hela tidnings-PDF:er sida för sida och slår ihop dem.
-- **zotero2remarkable_bridge** — visar mönstret för reMarkable-sync via
-  `rmapi`-binären (ddvk/rmapi) snarare än ett eget cloud-API-bygge.
+- **app.korsord.io** — interaktiv webbklient som publicerar
+  **Sverigekrysset** och **Miljonkrysset** veckovis. URL-strukturen
+  är förutsägbar (`/c/sverigekrysset-<vecka>-<år>/`), ingen
+  inloggning krävs. Dessa två kryss syndikeras i flera dagstidningar
+  — att hämta dem direkt här undviker dubbletter och slipper hela
+  Prenly-flödet.
+- **Prenly-tidningar** (DN, SvD, lokaltidningar m.fl.) för
+  *tidningsspecifika* korsord (dagskrysset, kryptokrysset, lokala
+  kryss). Mitt eget `prenly-dl`-repo visar API-flödet:
+  hela tidnings-PDF:er hämtas och korsordssidor måste extraheras.
 
-`remarkablecrosswords` ska bli en enskild tjänst som binder ihop tre
-modulära steg + ett notifieringssteg, alla styrbara från ett webb-UI:
+`zotero2remarkable_bridge` (separat repo) visar mönstret för
+reMarkable-sync via `rmapi`-binären (ddvk/rmapi) snarare än ett eget
+cloud-API-bygge.
 
-1. **Hämta** — ladda ned valda tidningar via Prenly (återanvänd logik
-   från prenly-dl).
-2. **Extrahera** — plocka ut korsordssidor till egna PDF:er.
-3. **Synka** — skicka extraherade korsord till reMarkable Pro via
+`remarkablecrosswords` blir en tjänst som binder ihop fyra steg, alla
+styrbara från ett webb-UI:
+
+1. **Hämta** — beroende på källtyp:
+   - korsord.io → öppna URL med headless Chromium, exportera till PDF
+     (sidan är redan ett färdigt korsord)
+   - Prenly → ladda ner tidnings-PDF (logik från prenly-dl)
+2. **Extrahera** — bara för Prenly-källor: plocka ut
+   korsordssidorna ur tidnings-PDF:en. Hoppas över för korsord.io.
+3. **Synka** — skicka korsords-PDF till reMarkable Pro via
    cloud (rmapi).
 4. **Notifiera** — pinga mig när nya korsord ligger på plattan.
 
-Mål: kör som en alltid-på tjänst i `~/workspace/remarkablecrosswords` på
-ubuntu-ai-VMen, schemalagd att hämta nya nummer dagligen och
-självsynka. Webb-UI för konfiguration, manuell körning, historik och
+Mål: kör som en alltid-på tjänst på TERVO2 (Docker-container under
+befintlig nginx-stack). Dev sker på ubuntu-ai. Schemalagd att hämta
+nya kryss veckovis (korsord.io) respektive dagligen (Prenly), med
+självsynk. Webb-UI för konfiguration, manuell körning, historik och
 felsökning.
 
 ## Stack
@@ -42,13 +56,17 @@ Externa beroenden i container:
   experimentellt stöd för reMarkables nya sync-protokoll, vilket
   reMarkable Pro använder). Statiskt linkad Go-binär kopieras in i
   imagen från release-artefakt.
+- `playwright` + Chromium för korsord.io (headless render → PDF).
+  Adderar ~300 MB i imagen men är den raka vägen. Som senare
+  optimering kan vi sniffa korsord.io:s JSON-API och rendera själva
+  — men inte i V1.
 - `pypdf` (efterföljaren till PyPDF2) + `pdfplumber` för
-  textextraktion ur digitala PDF:er
+  textextraktion ur digitala PDF:er (Prenly-flödet)
 - `requests`, `img2pdf`
 
-**Ingen OCR/tesseract** — Prenly levererar digitala (textbaserade)
-PDF:er, så textextraktion räcker. Skippar pdf2image/tesseract-
-beroenden helt.
+**Ingen OCR/tesseract** — både Prenly och korsord.io ger digitala
+(textbaserade eller vector-baserade) PDF:er, så textextraktion
+räcker. Skippar pdf2image/tesseract-beroenden helt.
 
 ## Arkitektur
 
@@ -71,9 +89,13 @@ app/
     notifications.py   # konfig av notif-target, testskick
     jobs.py            # historik och loggar
   services/
-    prenly.py          # refaktorerad prenly-dl: getContextToken, getCatalogueIssues,
+    sources/
+      __init__.py      # SOURCE_KINDS = {"korsordio": ..., "prenly": ...}
+      base.py          # SourceFetcher-protokoll: download_latest(source) -> list[Path]
+      korsordio.py     # Playwright: öppna /c/<slug>-<vecka>-<år>/, page.pdf()
+      prenly.py        # refaktorerad prenly-dl: getContextToken, getCatalogueIssues,
                        # getIssueJSON, getHashes, getPDF, download_issue()
-    crossword.py       # extract_pages_by_rule(pdf, rule) -> Path
+    crossword.py       # extract_pages_by_rule(pdf, rule) -> Path (bara Prenly-flödet)
     remarkable.py      # wrapper kring rmapi: upload, ls, mkdir, ensure_folder
     notifier.py        # abstrakt Notifier + implementation (ntfy/Pushover/...)
   utils/
@@ -91,9 +113,14 @@ data/                  # gitignored
 ## Datamodell (SQLite)
 
 - **users** — admin-användare (jag är ensam, men lösen ska skyddas)
-- **sources** — en rad per tidning: `name`, `prenly_title_id`,
-  `prenly_site`, `textalk_auth`, `prenly_auth`, `prenly_cdn` (nullable),
-  `schedule_cron`, `enabled`, `prefix`
+- **sources** — en rad per källa, gemensam tabell för båda källtyper:
+  - `name`, `kind` (`korsordio` | `prenly`), `enabled`,
+    `schedule_cron`, `prefix`
+  - `config_json` — kindspecifik konfiguration:
+    - `korsordio`: `{"slug": "sverigekrysset"}` (URL byggs som
+      `/c/<slug>-<vecka>-<år>/`)
+    - `prenly`: `{"title_id", "site", "textalk_auth", "auth",
+      "cdn"}` (tokens lagras maskerade i UI)
 - **extraction_rules** — regel per `source_id`: `kind`
   (`pages` | `pages_per_weekday` | `text_match` | `manual`),
   `params_json`. Exempel: `{"weekday":"sat","pages":[28,29]}` eller
@@ -109,22 +136,54 @@ data/                  # gitignored
 
 ## Modulansvar
 
-### 1. Hämtning (`services/prenly.py`)
+### 1. Hämtning (`services/sources/`)
+
+Gemensamt protokoll i `services/sources/base.py`:
+
+```python
+class SourceFetcher(Protocol):
+    def list_available(self, source: Source) -> list[ExternalIssue]: ...
+    def download(self, source: Source, ext_issue: ExternalIssue) -> Path: ...
+```
+
+`ExternalIssue` är en lättviktig dataklass med `external_id`, `name`,
+`published_at`. `external_id` används för att slå mot `issues`-tabellen
+och avgöra om något redan är hämtat.
+
+#### `services/sources/korsordio.py`
+
+- `list_available(source)` — POST/GET mot `/g/<slug>/` och parsa
+  HTML för länkar `/c/<slug>-<vecka>-<år>/`. Returnerar lista med
+  vecka+år som `external_id`.
+- `download(source, ext_issue)` — Playwright launchar Chromium
+  headless, går till URL, väntar på att canvas/SVG renderats, kör
+  `page.pdf(format="A4", print_background=True)`. Sparar i
+  `data/pdfs/crosswords/`.
+- Inget extraktionssteg — PDF:en *är* korsordet redan.
+
+#### `services/sources/prenly.py`
 
 Bryt isär `prenly-dl.py` (279 rader) i återanvändbara funktioner:
 
 - `get_context_token(session, creds)`
-- `list_catalogue_issues(session, creds, title_id, limit)`
+- `list_catalogue_issues(session, creds, title_id, limit)` →
+  återanvänds som `list_available()`
 - `get_issue(session, creds, title_id, uid)` → JSON
 - `extract_page_hashes(issue_json)` → `dict[str, str]`
 - `download_pages(session, creds, title_id, hashes, out_dir)`
 - `merge_pages(out_dir, target_pdf)`
-- `download_issue(source, uid) -> Path` (orchestrator)
+- `download(source, ext_issue) -> Path` (orchestrator)
 
-Kör synkront i en background-task. Skippa om `issues.prenly_uid` redan
-finns.
+Output: hela tidnings-PDF:en i `data/pdfs/incoming/` — extraktionssteget
+nedan plockar ut korsordssidorna.
+
+Båda fetchers körs synkront i background-tasks. Skippa om
+`issues.external_id` redan finns för källan.
 
 ### 2. Extrahering (`services/crossword.py`)
+
+**Bara för Prenly-källor.** Korsord.io-flödet hoppar över detta steg
+helt — PDF:en från Playwright är redan ett färdigt korsord.
 
 Eftersom Prenly-PDF:erna är digitala (textbaserade) räcker
 `pdfplumber.extract_text()` per sida — ingen OCR.
@@ -222,15 +281,25 @@ Sidor:
 
 ## Schemaläggning
 
-APScheduler i FastAPI-lifespan. Per källa: enligt `schedule_cron`
-(default `30 6 * * *` — 06:30 dagligen).
+APScheduler i FastAPI-lifespan. Per källa: enligt `schedule_cron`.
+
+Default-cron per källtyp:
+- `korsordio`: `30 6 * * 1` — måndagar 06:30 (nya kryss läggs ut
+  varje måndag).
+- `prenly`: `30 6 * * *` — varje morgon (dagstidningar).
 
 Pipeline per körning:
-1. `download_new_issues(source)` — listar senaste N (default 5),
-   hoppar över redan nedladdade.
-2. För varje nytt nummer: `extract_crosswords(issue)`.
-3. `sync_pending_crosswords()` — pusha allt med `synced_at IS NULL`.
-4. Om något synkades: `notify(...)`.
+1. `fetcher = SOURCE_KINDS[source.kind]`
+2. `available = fetcher.list_available(source)` — vilka externa
+   issues finns för källan?
+3. För varje `ext_issue` som inte redan finns i `issues`-tabellen:
+   - `pdf = fetcher.download(source, ext_issue)`
+   - Om `source.kind == "prenly"`: kör `extract_crosswords(pdf)` →
+     en eller flera korsords-PDF:er i `data/pdfs/crosswords/`.
+   - Om `source.kind == "korsordio"`: registrera PDF:en direkt som
+     korsord (ingen extraktion).
+4. `sync_pending_crosswords()` — pusha allt med `synced_at IS NULL`.
+5. Om något synkades: `notify(...)`.
 
 Manuell trigger via webb-UI startar samma pipeline för en specifik källa
 eller ett specifikt nummer.
@@ -359,7 +428,40 @@ Test-suite (pytest):
   - HSTS via nginx, inga `data/`-PDF:er nås utan auth-check
   - **Ingen e-post, ingen magic-link** — räcker med
     username/password eftersom du är ensam användare
-- **Källor:** ingen seed-data. Webb-UI:t för tillägg av tidningar
-  byggs som första-class-flöde — ny källa = formulär med
-  `title_id`, site, tokens, och en "test connection"-knapp som
-  hämtar senaste numrets metadata utan att ladda ned hela PDF:en.
+- **Källor:** ingen seed-data. Webb-UI:t för tillägg av källor byggs
+  som första-class-flöde. Formuläret har två lägen efter `kind`-val:
+  - **korsord.io** — bara `slug` (default-val: `sverigekrysset`,
+    `miljonkrysset`). "Test connection" hämtar senaste veckans URL
+    och verifierar att sidan finns.
+  - **prenly** — `title_id`, `site`, `textalk_auth`, `auth`, ev.
+    `cdn`. Tokens visas maskerade. "Test connection" hämtar
+    katalogmetadata utan att ladda ned hela PDF:en.
+
+## V1-prioritering (första iteration att bygga)
+
+För att få något fungerande snabbt — bygg i denna ordning, varje
+fas är komplett och kan demoköras innan nästa börjar:
+
+**Fas 1: korsord.io-only end-to-end** (enklare källan, ingen auth,
+inga extraktionsregler):
+1. FastAPI-skelett, SQLite, lifespan, auth-mönster från svk-had.
+2. `services/sources/base.py` + `services/sources/korsordio.py`.
+3. `services/remarkable.py` med både `RmapiClient` och
+   `LocalQueueClient`.
+4. `services/notifier.py` med `NtfyNotifier`.
+5. Scheduler som kör pipelinen för korsord.io-källor.
+6. Minimal webb-UI: login, källista, "kör nu", jobblogg.
+7. Deploy mot TERVO2.
+
+Vid fas-1-slut ska du kunna lägga till en korsord.io-källa och få
+Sverigekrysset på reMarkable varje måndag morgon med ntfy-ping.
+
+**Fas 2: Prenly-källor + extraktion:**
+8. `services/sources/prenly.py` (port av prenly-dl).
+9. `services/crossword.py` (textmatch + inlärd regel).
+10. UI för regelhantering och manuell sidavmarkering.
+
+**Fas 3: polish:**
+11. Fler notifierare (Discord-webhook är trivial att lägga till).
+12. Web Push om/när du vill ha det.
+13. Tests + CI.
