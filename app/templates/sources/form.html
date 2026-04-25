@@ -1,22 +1,158 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Ny källa</h1>
-<form action="/sources" method="POST">
-    <label>Namn:</label>
-    <input type="text" name="name" required placeholder="t.ex. Sverigekrysset">
-    <label>Typ:</label>
-    <select name="kind">
-        <option value="korsordio">korsord.io</option>
-        <option value="prenly">Prenly</option>
-    </select>
-    <br><br>
-    <label>Schedule (cron):</label>
-    <input type="text" name="schedule_cron" placeholder="30 6 * * 1">
-    <label>reMarkable Prefix:</label>
-    <input type="text" name="prefix" placeholder="Sverigekrysset">
-    <label>Config JSON:</label>
-    <textarea name="config_json" style="width: 100%; height: 100px;">{"slug": "sverigekrysset"}</textarea>
-    <br><br>
-    <button type="submit">Spara</button>
-</form>
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h1 class="h3 mb-0">{% if source %}Redigera källa{% else %}Ny källa{% endif %}</h1>
+            </div>
+            <div class="card-body">
+                <form action="{% if source %}/sources/{{ source.id }}/edit{% else %}/sources{% endif %}" method="POST" id="sourceForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">Namn</label>
+                        <input type="text" name="name" class="form-control" required placeholder="t.ex. Sverigekrysset"
+                               value="{{ source.name if source else '' }}">
+                        <div class="form-text">Ett beskrivande namn för källan.</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Typ</label>
+                            <select name="kind" id="kindSelect" class="form-select">
+                                <option value="korsordio" {% if source and source.kind == 'korsordio' %}selected{% endif %}>korsord.io</option>
+                                <option value="sr_melodikryss" {% if source and source.kind == 'sr_melodikryss' %}selected{% endif %}>SR Melodikryss</option>
+                                <option value="other" {% if source and source.kind not in ('korsordio', 'sr_melodikryss') %}selected{% endif %}>Övrigt</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Undermapp på reMarkable</label>
+                            <input type="text" name="prefix" class="form-control" placeholder="Sverigekrysset"
+                                   value="{{ source.prefix or '' if source else '' }}">
+                            <div class="form-text">Lämna tomt för att lägga direkt i basmappen.</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Schema (cron)</label>
+                        <input type="text" name="schedule_cron" class="form-control" placeholder="30 6 * * 1"
+                               value="{{ source.schedule_cron if source else '' }}">
+                        <div class="form-text">T.ex. '30 6 * * *' för varje dag kl 06:30.</div>
+                    </div>
+
+                    <!-- Korsordio specifika fält -->
+                    <div id="korsordio_fields" class="card bg-light mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Inställningar för korsord.io</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Korsordio slug</label>
+                                <input type="text" id="ks_slug" class="form-control" placeholder="sverigekrysset">
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="ks_sms_boxes">
+                                <label class="form-check-label" for="ks_sms_boxes">SMS-svarsrutor (lösningskod)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="ks_fetch_competition">
+                                <label class="form-check-label" for="ks_fetch_competition">Tävlingsinfo</label>
+                            </div>
+                            <hr class="my-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="ks_overwrite">
+                                <label class="form-check-label" for="ks_overwrite">Skriv över befintlig fil på reMarkable vid omsynk</label>
+                            </div>
+                        </div>
+                        <input type="hidden" name="config_json" id="config_json_hidden">
+                    </div>
+
+                    <!-- Generell JSON -->
+                    <div id="other_fields" class="mb-3 d-none">
+                        <label class="form-label">Config JSON</label>
+                        <textarea id="config_json_textarea" class="form-control font-monospace" style="height: 120px;">{{ source.config_json if source else '{}' }}</textarea>
+                    </div>
+
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{% if source %}/sources/{{ source.id }}{% else %}/sources{% endif %}" class="btn btn-outline-secondary">Avbryt</a>
+                        <button type="submit" class="btn btn-primary">{% if source %}Spara ändringar{% else %}Spara källa{% endif %}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if source %}
+<script>const _existing = {{ source.config_json | safe }};</script>
+{% else %}
+<script>const _existing = null;</script>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const kindSelect = document.getElementById('kindSelect');
+    const korsordioFields = document.getElementById('korsordio_fields');
+    const otherFields = document.getElementById('other_fields');
+
+    const hiddenInput = document.getElementById('config_json_hidden');
+    const textAreaInput = document.getElementById('config_json_textarea');
+
+    const ksSlug = document.getElementById('ks_slug');
+    const ksSms = document.getElementById('ks_sms_boxes');
+    const ksComp = document.getElementById('ks_fetch_competition');
+    const ksOverwrite = document.getElementById('ks_overwrite');
+
+    // Förifyll korsordio-fält från befintlig config
+    if (_existing && kindSelect.value === 'korsordio') {
+        ksSlug.value = _existing.slug || '';
+        ksSms.checked = _existing.sms_boxes !== false;
+        ksComp.checked = _existing.fetch_competition !== false;
+        ksOverwrite.checked = _existing.overwrite === true;
+    } else if (!_existing) {
+        // Defaultvärden för ny källa
+        ksSms.checked = true;
+        ksComp.checked = true;
+        ksOverwrite.checked = false;
+    }
+
+    function updateConfigJson() {
+        if (kindSelect.value === 'korsordio') {
+            hiddenInput.value = JSON.stringify({
+                slug: ksSlug.value,
+                sms_boxes: ksSms.checked,
+                fetch_competition: ksComp.checked,
+                overwrite: ksOverwrite.checked
+            });
+        }
+    }
+
+    function toggleFields() {
+        if (kindSelect.value === 'korsordio') {
+            korsordioFields.classList.remove('d-none');
+            otherFields.classList.add('d-none');
+            hiddenInput.setAttribute('name', 'config_json');
+            textAreaInput.removeAttribute('name');
+            updateConfigJson();
+        } else if (kindSelect.value === 'sr_melodikryss') {
+            korsordioFields.classList.add('d-none');
+            otherFields.classList.add('d-none');
+            hiddenInput.setAttribute('name', 'config_json');
+            hiddenInput.value = '{}';
+            textAreaInput.removeAttribute('name');
+        } else {
+            korsordioFields.classList.add('d-none');
+            otherFields.classList.remove('d-none');
+            textAreaInput.setAttribute('name', 'config_json');
+            hiddenInput.removeAttribute('name');
+        }
+    }
+
+    kindSelect.addEventListener('change', toggleFields);
+    [ksSlug, ksSms, ksComp, ksOverwrite].forEach(el => {
+        el.addEventListener('change', updateConfigJson);
+        el.addEventListener('input', updateConfigJson);
+    });
+
+    toggleFields();
+});
+</script>
 {% endblock %}

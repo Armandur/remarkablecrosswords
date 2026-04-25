@@ -1,21 +1,88 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ source.name }}</h1>
-<p>Typ: {{ source.kind }}</p>
-<p>Status: {% if source.enabled %}Aktiv{% else %}Inaktiv{% endif %}</p>
-<p>Cron: {{ source.schedule_cron }}</p>
-<p>Prefix: {{ source.prefix }}</p>
-<pre>{{ source.config_json }}</pre>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/sources">Källor</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ source.name }}</li>
+  </ol>
+</nav>
 
-<form action="/sources/{{ source.id }}/run" method="POST" style="display:inline">
-    <button type="submit">Kör nu</button>
-</form>
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h1 class="h3 mb-0">{{ source.name }}</h1>
+                {% if source.enabled %}
+                    <span class="badge bg-success">Aktiv</span>
+                {% else %}
+                    <span class="badge bg-secondary">Inaktiv</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Typ</div>
+                    <div class="col-sm-8 fw-bold">{{ source.kind }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Schema (cron)</div>
+                    <div class="col-sm-8"><code>{{ source.schedule_cron }}</code></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Undermapp på reMarkable</div>
+                    <div class="col-sm-8">{{ source.prefix or '-' }}</div>
+                </div>
+                
+                <hr>
+                
+                <h5 class="card-title">Konfiguration</h5>
+                <pre class="bg-light p-3 border rounded" id="configJsonDisplay">{{ source.config_json }}</pre>
+            </div>
+            <div class="card-footer bg-white d-flex gap-2">
+                <form action="/sources/{{ source.id }}/run" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-primary">Kör nu</button>
+                </form>
 
-<form action="/sources/{{ source.id }}/toggle" method="POST" style="display:inline">
-    <button type="submit">{% if source.enabled %}Inaktivera{% else %}Aktivera{% endif %}</button>
-</form>
+                <form action="/sources/{{ source.id }}/rerender" method="POST" onsubmit="return confirm('Rendera om alla korsord för denna källa? De kommer att synkas om till reMarkable.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-outline-warning">Rendera om</button>
+                </form>
 
-<form action="/sources/{{ source.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('Är du säker?')">
-    <button type="submit" style="color: red;">Ta bort</button>
-</form>
+                <form action="/sources/{{ source.id }}/toggle" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-outline-secondary">
+                        {% if source.enabled %}Inaktivera{% else %}Aktivera{% endif %}
+                    </button>
+                </form>
+
+                <a href="/sources/{{ source.id }}/edit" class="btn btn-outline-secondary">Redigera</a>
+
+                <div class="ms-auto">
+                    <form action="/sources/{{ source.id }}/delete" method="POST" id="deleteForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="button" class="btn btn-outline-danger" onclick="confirmDelete()">Ta bort</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete() {
+    if (confirm('Är du säker på att du vill ta bort denna källa?')) {
+        document.getElementById('deleteForm').submit();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const el = document.getElementById('configJsonDisplay');
+    try {
+        const obj = JSON.parse(el.textContent);
+        el.textContent = JSON.stringify(obj, null, 2);
+    } catch (e) {
+        // Not valid JSON or already formatted
+    }
+});
+</script>
 {% endblock %}

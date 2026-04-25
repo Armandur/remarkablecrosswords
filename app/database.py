@@ -82,6 +82,23 @@ class NotificationTarget(Base):
     config_json = Column(Text, default="{}")
     enabled = Column(Boolean, default=True)
 
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=True)
+
+def get_setting(db: Session, key: str, default: str | None = None) -> str | None:
+    row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    return row.value if row else default
+
+def set_setting(db: Session, key: str, value: str) -> None:
+    row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=key, value=value))
+    db.commit()
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

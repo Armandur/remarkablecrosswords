@@ -1,13 +1,47 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Källor</h1>
-<a href="/sources/new">Ny källa</a>
-<ul>
-{% for source in sources %}
-    <li>
-        <a href="/sources/{{ source.id }}">{{ source.name }}</a> 
-        ({{ source.kind }}, {% if source.enabled %}Aktiv{% else %}Inaktiv{% endif %})
-    </li>
-{% endfor %}
-</ul>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Källor</h1>
+    <a href="/sources/new" class="btn btn-primary">Ny källa</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Namn</th>
+                        <th>Typ</th>
+                        <th>Status</th>
+                        <th class="text-end">Åtgärder</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for source in sources %}
+                    <tr>
+                        <td class="align-middle fw-bold">{{ source.name }}</td>
+                        <td class="align-middle">{{ source.kind }}</td>
+                        <td class="align-middle">
+                            {% if source.enabled %}
+                                <span class="badge bg-success">Aktiv</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inaktiv</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="/sources/{{ source.id }}" class="btn btn-sm btn-outline-primary">Detaljer</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not sources %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">Inga källor konfigurerade</td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

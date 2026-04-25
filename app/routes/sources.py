@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.database import Source, get_db
 from app.deps import templates, require_admin, get_current_user
-from app.scheduler import run_pipeline_for_source
+from app.scheduler import run_pipeline_for_source, rerender_issues_for_source
+from app.csrf import CsrfProtect
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -27,7 +28,8 @@ async def create_source(
     prefix: str = Form(None),
     config_json: str = Form("{}"),
     db: Session = Depends(get_db),
-    user=Depends(require_admin)
+    user=Depends(require_admin),
+    _csrf: CsrfProtect = Depends(CsrfProtect())
 ):
     source = Source(
         name=name,
@@ -46,13 +48,45 @@ async def source_detail(source_id: int, request: Request, db: Session = Depends(
     source = db.query(Source).filter(Source.id == source_id).first()
     return templates.TemplateResponse(request, "sources/detail.html", {"source": source})
 
+@router.get("/{source_id}/edit")
+async def edit_source_form(source_id: int, request: Request, db: Session = Depends(get_db), user=Depends(require_admin)):
+    source = db.query(Source).filter(Source.id == source_id).first()
+    return templates.TemplateResponse(request, "sources/form.html", {"source": source})
+
+@router.post("/{source_id}/edit")
+async def update_source(
+    source_id: int,
+    name: str = Form(...),
+    kind: str = Form(...),
+    schedule_cron: str = Form(None),
+    prefix: str = Form(None),
+    config_json: str = Form("{}"),
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+    _csrf: CsrfProtect = Depends(CsrfProtect())
+):
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if source:
+        source.name = name
+        source.kind = kind
+        source.schedule_cron = schedule_cron
+        source.prefix = prefix
+        source.config_json = config_json
+        db.commit()
+    return RedirectResponse(url=f"/sources/{source_id}", status_code=303)
+
 @router.post("/{source_id}/run")
-async def run_source(source_id: int, background_tasks: BackgroundTasks, user=Depends(require_admin)):
+async def run_source(source_id: int, background_tasks: BackgroundTasks, user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
     background_tasks.add_task(run_pipeline_for_source, source_id)
     return RedirectResponse(url="/jobs", status_code=303)
 
+@router.post("/{source_id}/rerender")
+async def rerender_source(source_id: int, background_tasks: BackgroundTasks, user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
+    background_tasks.add_task(rerender_issues_for_source, source_id)
+    return RedirectResponse(url="/jobs", status_code=303)
+
 @router.post("/{source_id}/toggle")
-async def toggle_source(source_id: int, db: Session = Depends(get_db), user=Depends(require_admin)):
+async def toggle_source(source_id: int, db: Session = Depends(get_db), user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
     source = db.query(Source).filter(Source.id == source_id).first()
     if source:
         source.enabled = not source.enabled
@@ -60,7 +94,7 @@ async def toggle_source(source_id: int, db: Session = Depends(get_db), user=Depe
     return RedirectResponse(url=f"/sources/{source_id}", status_code=303)
 
 @router.post("/{source_id}/delete")
-async def delete_source(source_id: int, db: Session = Depends(get_db), user=Depends(require_admin)):
+async def delete_source(source_id: int, db: Session = Depends(get_db), user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
     source = db.query(Source).filter(Source.id == source_id).first()
     if source:
         db.delete(source)
