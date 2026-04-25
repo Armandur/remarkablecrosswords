@@ -13,12 +13,9 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 async def settings_view(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     targets = db.query(NotificationTarget).all()
     return templates.TemplateResponse(
+        request,
         "settings.html",
-        {
-            "request": request,
-            "targets": targets,
-            "remarkable_client": REMARKABLE_CLIENT
-        }
+        {"targets": targets, "remarkable_client": REMARKABLE_CLIENT},
     )
 
 @router.post("/notifications")

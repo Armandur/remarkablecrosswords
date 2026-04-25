@@ -20,11 +20,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     active_sources = db.query(Source).filter(Source.enabled == True).all()
     
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "latest_jobs": latest_jobs,
             "pending_sync_count": pending_sync_count,
-            "active_sources": active_sources
-        }
+            "active_sources": active_sources,
+        },
     )

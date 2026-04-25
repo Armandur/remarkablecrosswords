@@ -1,14 +1,25 @@
 """Auth-routes: login, logout, /api/me."""
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user, hash_password, verify_password
+from app.auth import get_current_user, get_current_user_id, hash_password, verify_password
 from app.database import User, get_db
+from app.deps import templates
 from app.schemas import LoginBody, MePasswordBody
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if get_current_user_id(request):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/")
+    return templates.TemplateResponse(request, "login.html")
+
 
 @router.post("/api/login")
 async def login(body: LoginBody, request: Request, db: Session = Depends(get_db)):

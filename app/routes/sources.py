@@ -12,13 +12,13 @@ router = APIRouter(prefix="/sources", tags=["sources"])
 @router.get("/")
 async def list_sources(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     sources = db.query(Source).all()
-    return templates.TemplateResponse("sources/list.html", {"request": request, "sources": sources})
+    return templates.TemplateResponse(request, "sources/list.html", {"sources": sources})
 
 @router.get("/new")
 async def new_source_form(request: Request, user=Depends(require_admin)):
-    return templates.TemplateResponse("sources/form.html", {"request": request})
+    return templates.TemplateResponse(request, "sources/form.html")
 
-@router.post("")
+@router.post("/")
 async def create_source(
     name: str = Form(...),
     kind: str = Form(...),
@@ -44,7 +44,7 @@ async def create_source(
 @router.get("/{source_id}")
 async def source_detail(source_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     source = db.query(Source).filter(Source.id == source_id).first()
-    return templates.TemplateResponse("sources/detail.html", {"request": request, "source": source})
+    return templates.TemplateResponse(request, "sources/detail.html", {"source": source})
 
 @router.post("/{source_id}/run")
 async def run_source(source_id: int, background_tasks: BackgroundTasks, user=Depends(require_admin)):

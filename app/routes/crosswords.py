@@ -11,7 +11,7 @@ router = APIRouter(prefix="/crosswords", tags=["crosswords"])
 @router.get("/")
 async def list_crosswords(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     crosswords = db.query(Crossword, Issue, Source).join(Issue, Crossword.issue_id == Issue.id).join(Source, Issue.source_id == Source.id).order_by(Issue.published_at.desc(), Crossword.id.desc()).all()
-    return templates.TemplateResponse("crosswords/list.html", {"request": request, "crosswords": crosswords})
+    return templates.TemplateResponse(request, "crosswords/list.html", {"crosswords": crosswords})
 
 @router.post("/{crossword_id}/sync")
 async def sync_crossword(crossword_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
