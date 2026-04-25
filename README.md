@@ -1,62 +1,89 @@
-# reMarkable Crosswords
+# remarkablecrosswords
 
-Automatisera leveransen av korsord till din reMarkable-läsplatta. Projektet integrerar med korsord.io för att hämta, rendera och skicka korsord direkt till din enhet.
+Hämtar korsord automatiskt och synkar dem till din reMarkable-läsplatta som PDF. Konfigureras via ett webbaserat gränssnitt.
+
+## Stödda källor
+
+| Källa | Typ | Cron-förslag |
+|---|---|---|
+| **korsord.io** | Sverigekrysset, Miljonkrysset m.fl. — hämtar `.crossword`-JSON och renderar PDF lokalt | `30 6 * * 1` |
+| **SR Melodikryss** | Sveriges Radio P4:s veckokryss — direktnedladdning av färdig PDF | `30 8 * * 6` |
 
 ## Funktioner
-- Hämtar korsord från korsord.io.
-- Renderar PDF-filer anpassade för reMarkable.
-- Automatisk uppladdning via `rmapi`.
-- Webbaserat dashboard för inställningar och hantering av källor.
-- Stöd för schemalagda jobb.
 
-## Deployment (TERVO2)
+- Webbaserat UI: lägg till/redigera källor, bläddra reMarkable-mappar, se jobbloggar
+- Schemalagda hämtningar per källa (APScheduler + cron-uttryck)
+- Synkstatus uppdateras asynkront i korsordslistans — klicka på utfall för att se logg
+- Rendera om enstaka källas alla korsord (t.ex. efter ändrad inställning)
+- Notifieringar via [ntfy](https://ntfy.sh) när nya korsord synkats
+- Fallback: `LocalQueueClient` kopierar PDF:er till en lokal mapp om rmapi inte är tillgänglig
 
-Använd `docker-compose.yml` för att köra applikationen på din server.
+## Deployment (TERVO2 / produktion)
 
 ```bash
+cp .env.example .env
+# Redigera .env — sätt SESSION_SECRET_KEY och ADMIN_INITIAL_PASSWORD
 docker compose up -d
 ```
 
-### Förstagångs-autentisering med rmapi
-
-För att applikationen ska kunna skicka filer till din reMarkable måste du autentisera `rmapi` en gång manuellt:
-
-```bash
-docker run -it --rm \
-  -v /mnt/user/appdata/remarkablecrosswords/rmapi:/root/.config/rmapi \
-  ghcr.io/armandur/remarkablecrosswords:latest \
-  rmapi
-```
-Följ instruktionerna på skärmen (besök https://my.remarkable.com/device/desktop/connect för att få en kod).
+Öppna webgränssnittet, logga in och gå till **Inställningar** för att autentisera mot reMarkable (engångskod från [my.remarkable.com/device/desktop/connect](https://my.remarkable.com/device/desktop/connect)).
 
 ## Utvecklingsmiljö
 
-### Med Docker Compose
 ```bash
+cp .env.example .env
 docker compose -f docker-compose.dev.yml up
 ```
 
-### Lokalt med uv
+Eller direkt med uv (utan Docker):
+
 ```bash
 uv sync
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
+
+Sätt `ENABLE_SCHEDULER=false` i `.env` under utveckling för att undvika oväntade bakgrundsjobb.
 
 ## Miljövariabler
 
-Följande variabler kan konfigureras i din `.env`-fil:
+Kopiera `.env.example` och justera:
 
-| Variabel | Beskrivning | Standardvärde |
-|----------|-------------|---------------|
-| `SESSION_SECRET_KEY` | Hemlig nyckel för sessioner | (Krävs) |
-| `ADMIN_INITIAL_PASSWORD` | Initialt lösenord för admin | (Krävs) |
-| `DATA_DIR` | Sökväg till SQLite-databas och data | `/app/data` |
-| `REMARKABLE_FOLDER` | Mapp på reMarkable där korsord hamnar | `/Korsord` |
-| `REMARKABLE_CLIENT` | Vilken klient som ska användas (`rmapi` eller `local`) | `rmapi` |
-| `QUEUE_DIR` | Sökväg för lokal kö (om `local` klient används) | `/app/queue` |
-| `NTFY_URL` | URL för notifieringar via ntfy.sh | (Valfri) |
-| `ENABLE_SCHEDULER` | Aktivera/inaktivera schemaläggaren | `true` |
+| Variabel | Standardvärde | Beskrivning |
+|---|---|---|
+| `SESSION_SECRET_KEY` | — | Lång slumpmässig sträng, krävs |
+| `ADMIN_INITIAL_PASSWORD` | — | Sätts vid första start om inga användare finns |
+| `DATA_DIR` | `/app/data` | SQLite-databas och PDF-arkiv |
+| `REMARKABLE_FOLDER` | `/Korsord` | Basmapp på reMarkable (kan åsidosättas i UI) |
+| `REMARKABLE_CLIENT` | `rmapi` | `rmapi` eller `local` (lokal kö-fallback) |
+| `QUEUE_DIR` | `/app/queue` | Används av `local`-klienten |
+| `NTFY_URL` | — | Valfri, t.ex. `https://ntfy.sh/min-hemliga-topic` |
+| `ENABLE_SCHEDULER` | `true` | Sätt `false` under utveckling |
+| `RMAPI_CONFIG_PATH` | `~/.config/rmapi/rmapi.conf` | Sökväg till rmapi-tokens |
 
 ## Arkitektur
-Projektet är byggt med FastAPI och SQLite. Den använder `rmapi` för att kommunicera med reMarkable Cloud.
-Korsordshämtning sker via den fristående modulen `korsordio`.
+
+```
+korsordio/              fristående modul — hämtar och renderar korsord.io-kryss
+app/
+  main.py               FastAPI-app, lifespan, router-registrering
+  config.py             miljövariabler och sökvägar
+  database.py           SQLAlchemy-modeller + init_db()
+  scheduler.py          APScheduler + pipeline-funktioner
+  csrf.py               CSRF-skydd (itsdangerous)
+  routes/               en fil per domän (sources, crosswords, jobs, settings, …)
+  services/
+    remarkable.py       RmapiClient / LocalQueueClient
+    notifier.py         NtfyNotifier (utbyggbar)
+    sources/
+      korsordio/        KorsordioFetcher + spec.md
+      sr_melodikryss/   SRMelodikryssFetcher + spec.md
+  templates/            Jinja2 + Bootstrap 5
+```
+
+Nya källtyper läggs till i `app/services/sources/` — implementera `SourceFetcher`-protokollet (`list_available` + `download`) och registrera i `SOURCE_KINDS`.
+
+## Krav
+
+- Python 3.12
+- [`rmapi`](https://github.com/ddvk/rmapi) (ingår i Docker-imagen, hämtas från senaste release)
+- `cairosvg` + systembibliotek för CairoSVG (ingår i Docker-imagen)
