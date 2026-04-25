@@ -16,6 +16,10 @@ dependencies = [
     "httpx>=0.27.0",
     "cairosvg>=2.7.0",
     "requests>=2.31.0",
+    "pypdf>=4.0.0",
+    "img2pdf>=0.5.0",
+    "prenly-dl",
+    "pikepdf>=10.5.1",
 ]
 
 [tool.uv]
@@ -23,3 +27,6 @@ dev-dependencies = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+
+[tool.uv.sources]
+prenly-dl = { git = "https://github.com/Armandur/prenly-dl" }

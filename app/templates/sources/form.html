@@ -22,7 +22,9 @@
                             <select name="kind" id="kindSelect" class="form-select">
                                 <option value="korsordio" {% if source and source.kind == 'korsordio' %}selected{% endif %}>korsord.io</option>
                                 <option value="sr_melodikryss" {% if source and source.kind == 'sr_melodikryss' %}selected{% endif %}>SR Melodikryss</option>
-                                <option value="other" {% if source and source.kind not in ('korsordio', 'sr_melodikryss') %}selected{% endif %}>Övrigt</option>
+                                <option value="prenly" {% if source and source.kind == 'prenly' %}selected{% endif %}>Prenly</option>
+                                <option value="yippie_harnosand" {% if source and source.kind == 'yippie_harnosand' %}selected{% endif %}>Yippie Härnösand [Prenly]</option>
+                                <option value="other" {% if source and source.kind not in ('korsordio', 'sr_melodikryss', 'prenly', 'yippie_harnosand') %}selected{% endif %}>Övrigt</option>
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -41,7 +43,7 @@
                     </div>
 
                     <!-- Korsordio specifika fält -->
-                    <div id="korsordio_fields" class="card bg-light mb-3">
+                    <div id="korsordio_fields" class="card bg-light mb-3 d-none">
                         <div class="card-body">
                             <h5 class="card-title">Inställningar för korsord.io</h5>
                             <div class="mb-3">
@@ -62,7 +64,62 @@
                                 <label class="form-check-label" for="ks_overwrite">Skriv över befintlig fil på reMarkable vid omsynk</label>
                             </div>
                         </div>
-                        <input type="hidden" name="config_json" id="config_json_hidden">
+                        <input type="hidden" id="config_json_hidden">
+                    </div>
+
+                    <!-- Prenly specifika fält -->
+                    <div id="prenly_fields" class="card bg-light mb-3 d-none">
+                        <div class="card-body">
+                            <h5 class="card-title">Inställningar för Prenly</h5>
+                            <div class="alert alert-info py-2 mb-3">
+                                Öppna din Prenly-tidning i webbläsaren och kör
+                                <a id="prenly-bm-link" href="#" class="alert-link">bookmarkleten</a>
+                                (dra länken till bokmärkesfältet). Klistra sedan in JSON nedan.
+                                <br><small class="text-muted"><code>textalk-auth</code> hämtas manuellt via DevTools → Network → ett <code>api/v2</code>-anrop → Request Headers.</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Importera från bookmarklet</label>
+                                <textarea id="prenly_import_json" class="form-control font-monospace" rows="3" placeholder='Klistra in JSON från bookmarkleten...'></textarea>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="prenly_import_btn">Importera fält</button>
+                            </div>
+                            <hr class="my-3">
+                            <div class="mb-3">
+                                <label class="form-label">Site URL</label>
+                                <input type="text" id="prenly_site" class="form-control" placeholder="https://etidning.sydsvenskan.se">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Textalk Auth (X-Textalk-Content-Client-Authorize)</label>
+                                <input type="text" id="prenly_textalk_auth" class="form-control">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Auth (Bearer token)</label>
+                                <input type="text" id="prenly_auth" class="form-control">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Title ID</label>
+                                <input type="text" id="prenly_title_id" class="form-control">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Antal nummer att hämta bakåt</label>
+                                <input type="number" id="prenly_backfill_limit" class="form-control" min="1" max="200" placeholder="5">
+                                <div class="form-text">Hur många senaste nummer som listas vid varje schemalagd körning. Öka tillfälligt för initialhämtning.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">CDN URL (valfri)</label>
+                                <input type="text" id="prenly_cdn" class="form-control" placeholder="https://mediacdn.prenly.com">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Korsordsmarkör (valfri)</label>
+                                <input type="text" id="prenly_marker_text" class="form-control" placeholder="SE KRYSSET">
+                                <div class="form-text">Text som identifierar korsordsidan. Overlayen tas bort automatiskt. Har företräde framför sidnummer nedan.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Extrahera sidor (valfri)</label>
+                                <input type="text" id="prenly_extraction_pages" class="form-control" placeholder="28, 29">
+                                <div class="form-text">Kommaseparerade sidnummer (1-indexerat). Lämna tomt för hela tidningen.</div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="prenly_config_json_hidden">
                     </div>
 
                     <!-- Generell JSON -->
@@ -87,13 +144,72 @@
 <script>const _existing = null;</script>
 {% endif %}
 
+<script id="prenly-bm-source" type="text/plain">
+(function () {
+  function inputStyle(auto) {
+    return 'display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:6px 8px;'
+      + 'border-radius:4px;font-family:monospace;font-size:11px;background:#2d2d2d;color:#d4d4d4;'
+      + 'border:1px solid ' + (auto ? '#3d8b37' : '#555');
+  }
+  var auth = (localStorage.getItem('prenlyreadersessiontoken') || '').replace(/^Bearer /, '');
+  var site = location.origin;
+  var nums = location.pathname.split('/').filter(function (p) { return /^\d{4,}$/.test(p); });
+  var title = nums[0] || '';
+  function field(id, label, hint, val, auto) {
+    return '<label style="display:block;margin-bottom:10px;font-size:12px">' + label
+      + (hint ? ' <span style="color:#888;font-weight:normal">' + hint + '</span>' : '')
+      + '<input id="' + id + '" value="' + String(val).replace(/"/g, '&quot;') + '"'
+      + (auto ? ' readonly' : '') + ' style="' + inputStyle(auto) + '"></label>';
+  }
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:2147483647;display:flex;align-items:center;justify-content:center';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1e1e1e;color:#d4d4d4;padding:24px;border-radius:8px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;font-family:monospace';
+  box.innerHTML = '<h2 style="margin:0 0 12px;color:#fff;font-size:15px">prenly-dl konfigurator</h2>'
+    + '<p style="margin:0 0 14px;font-size:11px;color:#888">Grön kant = automatiskt ifyllt.</p>'
+    + field('prl-site', 'site', '', site, 1)
+    + field('prl-auth', 'auth', auth ? '(localStorage)' : '(saknas)', auth, !!auth)
+    + field('prl-textalk', 'textalk_auth', '(Network → api/v2 → X-Textalk-Content-Client-Authorize)', '', 0)
+    + field('prl-title', 'title_id', title ? '(från URL)' : '(ange manuellt)', title, !!title)
+    + '<button id="prl-gen" style="background:#0e639c;color:#fff;border:none;padding:8px 14px;border-radius:4px;cursor:pointer;font-size:13px">Generera JSON</button>'
+    + ' <button id="prl-cls" style="background:transparent;color:#888;border:1px solid #444;padding:8px 14px;border-radius:4px;cursor:pointer;font-size:13px">Stäng</button>'
+    + '<pre id="prl-out" style="display:none;margin-top:14px;background:#0d0d0d;padding:12px;border-radius:4px;font-size:11px;white-space:pre-wrap;word-break:break-all"></pre>'
+    + '<button id="prl-cp" style="display:none;background:#3d8b37;color:#fff;border:none;padding:8px 14px;border-radius:4px;cursor:pointer;font-size:13px;margin-top:8px">Kopiera JSON</button>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.getElementById('prl-cls').onclick = function () { document.body.removeChild(overlay); };
+  overlay.onclick = function (e) { if (e.target === overlay) document.body.removeChild(overlay); };
+  document.getElementById('prl-gen').onclick = function () {
+    var t = document.getElementById('prl-title').value.trim();
+    var conf = {
+      site: document.getElementById('prl-site').value,
+      auth: document.getElementById('prl-auth').value,
+      textalk_auth: document.getElementById('prl-textalk').value,
+      title_id: +t || t
+    };
+    var out = document.getElementById('prl-out');
+    var cp = document.getElementById('prl-cp');
+    out.style.display = 'block'; cp.style.display = 'inline-block';
+    out.textContent = JSON.stringify(conf, null, 2);
+    cp.onclick = function () {
+      navigator.clipboard.writeText(out.textContent).then(function () {
+        cp.textContent = 'Kopierat!';
+        setTimeout(function () { cp.textContent = 'Kopiera JSON'; }, 2000);
+      });
+    };
+  };
+})();
+</script>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const kindSelect = document.getElementById('kindSelect');
     const korsordioFields = document.getElementById('korsordio_fields');
+    const prenlyFields = document.getElementById('prenly_fields');
     const otherFields = document.getElementById('other_fields');
 
     const hiddenInput = document.getElementById('config_json_hidden');
+    const prenlyHiddenInput = document.getElementById('prenly_config_json_hidden');
     const textAreaInput = document.getElementById('config_json_textarea');
 
     const ksSlug = document.getElementById('ks_slug');
@@ -101,12 +217,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const ksComp = document.getElementById('ks_fetch_competition');
     const ksOverwrite = document.getElementById('ks_overwrite');
 
+    const pSite = document.getElementById('prenly_site');
+    const pTextalkAuth = document.getElementById('prenly_textalk_auth');
+    const pAuth = document.getElementById('prenly_auth');
+    const pTitleId = document.getElementById('prenly_title_id');
+    const pCdn = document.getElementById('prenly_cdn');
+    const pBackfill = document.getElementById('prenly_backfill_limit');
+    const pMarker = document.getElementById('prenly_marker_text');
+    const pPages = document.getElementById('prenly_extraction_pages');
+
     // Förifyll korsordio-fält från befintlig config
     if (_existing && kindSelect.value === 'korsordio') {
         ksSlug.value = _existing.slug || '';
         ksSms.checked = _existing.sms_boxes !== false;
         ksComp.checked = _existing.fetch_competition !== false;
         ksOverwrite.checked = _existing.overwrite === true;
+    } else if (_existing && ['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
+        pSite.value = _existing.site || '';
+        pTextalkAuth.value = _existing.textalk_auth || '';
+        pAuth.value = _existing.auth || '';
+        pTitleId.value = _existing.title_id || '';
+        pCdn.value = _existing.cdn || '';
+        pBackfill.value = _existing.backfill_limit || '';
+        pMarker.value = _existing.crossword_marker_text || '';
+        pPages.value = _existing.extraction_pages ? _existing.extraction_pages.join(', ') : '';
     } else if (!_existing) {
         // Defaultvärden för ny källa
         ksSms.checked = true;
@@ -125,31 +259,94 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function toggleFields() {
-        if (kindSelect.value === 'korsordio') {
-            korsordioFields.classList.remove('d-none');
-            otherFields.classList.add('d-none');
-            hiddenInput.setAttribute('name', 'config_json');
-            textAreaInput.removeAttribute('name');
-            updateConfigJson();
-        } else if (kindSelect.value === 'sr_melodikryss') {
-            korsordioFields.classList.add('d-none');
-            otherFields.classList.add('d-none');
-            hiddenInput.setAttribute('name', 'config_json');
-            hiddenInput.value = '{}';
-            textAreaInput.removeAttribute('name');
-        } else {
-            korsordioFields.classList.add('d-none');
-            otherFields.classList.remove('d-none');
-            textAreaInput.setAttribute('name', 'config_json');
-            hiddenInput.removeAttribute('name');
+    function updatePrenlyConfigJson() {
+        if (['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
+            const extractionPages = pPages.value.split(',')
+                .map(s => s.trim())
+                .filter(s => s !== '')
+                .map(s => parseInt(s, 10))
+                .filter(n => !isNaN(n));
+
+            const config = {
+                site: pSite.value,
+                textalk_auth: pTextalkAuth.value,
+                auth: pAuth.value,
+                title_id: pTitleId.value,
+                cdn: pCdn.value || undefined
+            };
+            const bl = parseInt(pBackfill.value, 10);
+            if (bl > 0) config.backfill_limit = bl;
+            if (pMarker.value.trim()) {
+                config.crossword_marker_text = pMarker.value.trim();
+            }
+            if (extractionPages.length > 0) {
+                config.extraction_pages = extractionPages;
+            }
+            prenlyHiddenInput.value = JSON.stringify(config);
         }
     }
 
+    function toggleFields() {
+        korsordioFields.classList.add('d-none');
+        prenlyFields.classList.add('d-none');
+        otherFields.classList.add('d-none');
+        
+        hiddenInput.removeAttribute('name');
+        prenlyHiddenInput.removeAttribute('name');
+        textAreaInput.removeAttribute('name');
+
+        if (kindSelect.value === 'korsordio') {
+            korsordioFields.classList.remove('d-none');
+            hiddenInput.setAttribute('name', 'config_json');
+            updateConfigJson();
+        } else if (['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
+            prenlyFields.classList.remove('d-none');
+            // Dölj markörfältet för Yippie — det är hårdkodat i fetcher:n
+            document.getElementById('prenly_marker_text').closest('.mb-3').style.display =
+                kindSelect.value === 'yippie_harnosand' ? 'none' : '';
+            prenlyHiddenInput.setAttribute('name', 'config_json');
+            updatePrenlyConfigJson();
+        } else if (kindSelect.value === 'sr_melodikryss') {
+            hiddenInput.setAttribute('name', 'config_json');
+            hiddenInput.value = '{}';
+        } else {
+            otherFields.classList.remove('d-none');
+            textAreaInput.setAttribute('name', 'config_json');
+        }
+    }
+
+    // Bookmarklet-länk
+    const bmSrc = document.getElementById('prenly-bm-source');
+    if (bmSrc) {
+        document.getElementById('prenly-bm-link').href = 'javascript:' + encodeURIComponent(bmSrc.textContent.trim());
+    }
+
+    // Import från bookmarklet JSON (stöder både flat och prenly-dl CLI-format)
+    document.getElementById('prenly_import_btn').addEventListener('click', function () {
+        try {
+            const data = JSON.parse(document.getElementById('prenly_import_json').value);
+            pSite.value        = data.site             || data.credentials?.site                     || '';
+            pAuth.value        = data.auth             || data.credentials?.auth                     || '';
+            pTextalkAuth.value = data.textalk_auth     || data.credentials?.['textalk-auth']         || '';
+            pTitleId.value     = data.title_id != null ? String(data.title_id) : String(data.publication?.title || '');
+            pCdn.value         = data.cdn              || data.credentials?.cdn                      || '';
+            document.getElementById('prenly_import_json').value = '';
+            updatePrenlyConfigJson();
+        } catch (e) {
+            alert('Ogiltig JSON: ' + e.message);
+        }
+    });
+
     kindSelect.addEventListener('change', toggleFields);
+    
     [ksSlug, ksSms, ksComp, ksOverwrite].forEach(el => {
         el.addEventListener('change', updateConfigJson);
         el.addEventListener('input', updateConfigJson);
+    });
+
+    [pSite, pTextalkAuth, pAuth, pTitleId, pCdn, pBackfill, pMarker, pPages].forEach(el => {
+        el.addEventListener('change', updatePrenlyConfigJson);
+        el.addEventListener('input', updatePrenlyConfigJson);
     });
 
     toggleFields();

@@ -6,6 +6,11 @@ from typing import Protocol, TYPE_CHECKING
 if TYPE_CHECKING:
     from app.database import Source
 
+
+class NoCrosswordError(Exception):
+    """Kastas när ett nummer saknar korsord — förväntat läge, ej ett fel."""
+
+
 @dataclass
 class ExternalIssue:
     external_id: str

@@ -13,7 +13,7 @@ from app.database import Crossword, Issue, Job, SessionLocal, Source, get_settin
 from app.services.notifier import get_notifiers
 from app.services.remarkable import get_remarkable_client
 from app.services.sources import SOURCE_KINDS
-from app.services.sources.base import ExternalIssue
+from app.services.sources.base import ExternalIssue, NoCrosswordError
 
 logger = logging.getLogger(__name__)
 
@@ -220,24 +220,53 @@ def run_pipeline_for_source(source_id: int):
                 job.issue_id = issue.id
                 job.state = 'done'
                 job.finished_at = datetime.datetime.utcnow()
+                job.log = f"Hämtad: {ext_issue.name}\nPDF: {pdf_path}"
                 new_issues_count += 1
+            except NoCrosswordError as e:
+                issue = Issue(
+                    source_id=source.id,
+                    external_id=ext_issue.external_id,
+                    name=ext_issue.name,
+                    published_at=ext_issue.published_at,
+                    pdf_path=None,
+                    downloaded_at=datetime.datetime.utcnow(),
+                    state='no_crossword'
+                )
+                db.add(issue)
+                db.flush()
+                job.issue_id = issue.id
+                job.state = 'done'
+                job.finished_at = datetime.datetime.utcnow()
+                job.log = str(e)
+                logger.info(f"Issue {ext_issue.external_id} saknar korsord, hoppas över.")
             except Exception as e:
                 job.state = 'failed'
                 job.finished_at = datetime.datetime.utcnow()
                 job.log = traceback.format_exc()
                 logger.exception(f"Failed to download issue {ext_issue.external_id}: {e}")
-            
+
             db.commit()
 
         synced = sync_pending(db)
-        
+
         if synced:
             notifiers = get_notifiers(db)
             for n in notifiers:
-                n.send(
-                    title="Nya korsord synkade",
-                    message=f"Synkade {new_issues_count} nya korsord till din reMarkable."
-                )
+                notify_job = Job(kind='notify', state='running')
+                db.add(notify_job)
+                db.commit()
+                try:
+                    n.send(
+                        title="Nya korsord synkade",
+                        message=f"Synkade {new_issues_count} nya korsord till din reMarkable."
+                    )
+                    notify_job.state = 'done'
+                    notify_job.log = f"Skickade notis via {type(n).__name__}"
+                except Exception as e:
+                    notify_job.state = 'failed'
+                    notify_job.log = traceback.format_exc()
+                notify_job.finished_at = datetime.datetime.utcnow()
+                db.commit()
                 
     except Exception as e:
         logger.exception(f"Pipeline failed for source {source_id}: {e}")
