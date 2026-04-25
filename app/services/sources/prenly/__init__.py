@@ -145,8 +145,8 @@ def _is_full_page_overlay(page, gs_names: set[str]) -> bool:
 def _find_crossword_image(
     page,
     min_pixels: int = 500_000,
-    min_stream_bytes: int = 5_000,
-) -> tuple[tuple[float, float, float, float], int] | None:
+    min_stream_bytes: int = 10_000,
+) -> tuple[str, tuple[float, float, float, float, float, float], tuple[float, float, float, float], int] | None:
     """Hittar korsordsbilden på en redaktionssida med gammal Yippie-layout.
 
     Algoritm:
@@ -155,7 +155,10 @@ def _find_crossword_image(
     3. Bland kvarvarande: välj den SISTA i ritordningen vars center_y > page_height/2
        (övre halvan av sidan i PDF-koordinater, y=0 nere).
 
-    Returnerar (bbox, pixel_count) eller None.
+    Returnerar (img_name, cm_matrix, bbox, pixel_count) eller None.
+    img_name inkluderar slash, t.ex. '/Im28'.
+    cm_matrix = (a, b, c, d, e, f) från cm-instruktionen.
+    bbox = (x1, y1, x2, y2) i sidans koordinatsystem.
     """
     media_box = page.get("/MediaBox")
     page_height = float(str(media_box[3])) if media_box and len(media_box) >= 4 else 841.0
@@ -181,7 +184,7 @@ def _find_crossword_image(
         return None
 
     instrs = list(pikepdf.parse_content_stream(page))
-    best: tuple[tuple[float, float, float, float], int] | None = None
+    best: tuple[str, tuple[float, float, float, float, float, float], tuple[float, float, float, float], int] | None = None
 
     for i, (ops, op) in enumerate(instrs):
         if str(op) != "Do" or not ops:
@@ -198,10 +201,47 @@ def _find_crossword_image(
                 bbox = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
                 center_y = (bbox[1] + bbox[3]) / 2
                 if center_y > page_height / 2:
-                    best = (bbox, eligible[name])
+                    best = (name, (a, b, c, d, e, f), bbox, eligible[name])
                 break
 
     return best
+
+
+def _extract_image_to_bytes(
+    pdf_bytes: bytes,
+    min_pixels: int = 500_000,
+    min_stream_bytes: int = 10_000,
+) -> bytes | None:
+    """Skapar en ren ensides-PDF med bara korsordsbilden – ingen text eller grafik.
+
+    Ersätter hela innehållsströmmen med enbart bildritningsinstruktionen
+    så att eventuell SE KRYSSET-text och annan overlay försvinner.
+    Returnerar None om ingen kvalificerad bild hittas i övre halvan.
+    """
+    src = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+    page = src.pages[0]
+    result = _find_crossword_image(page, min_pixels, min_stream_bytes)
+    if result is None:
+        return None
+
+    img_name, (a, b, c, d, e, f), bbox, _ = result
+    x1, y1, x2, y2 = bbox
+
+    new_content = f"q {a} {b} {c} {d} {e} {f} cm {img_name} Do Q\n".encode()
+
+    page["/MediaBox"] = pikepdf.Array([round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)])
+    if "/CropBox" in page:
+        del page["/CropBox"]
+
+    contents = page.get("/Contents")
+    if isinstance(contents, pikepdf.Array):
+        page["/Contents"] = pikepdf.Stream(src, new_content)
+    else:
+        contents.write(new_content)
+
+    buf = io.BytesIO()
+    src.save(buf)
+    return buf.getvalue()
 
 
 def _crop_page(pdf_bytes: bytes, bbox: tuple[float, float, float, float], out_path: Path) -> Path:
@@ -210,10 +250,7 @@ def _crop_page(pdf_bytes: bytes, bbox: tuple[float, float, float, float], out_pa
     page = src.pages[0]
     x1, y1, x2, y2 = bbox
     page["/MediaBox"] = pikepdf.Array([
-        pikepdf.Decimal(str(round(x1, 4))),
-        pikepdf.Decimal(str(round(y1, 4))),
-        pikepdf.Decimal(str(round(x2, 4))),
-        pikepdf.Decimal(str(round(y2, 4))),
+        round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4),
     ])
     if "/CropBox" in page:
         del page["/CropBox"]
@@ -221,12 +258,18 @@ def _crop_page(pdf_bytes: bytes, bbox: tuple[float, float, float, float], out_pa
     return out_path
 
 
-def _remove_overlay_from_page(pdf_bytes: bytes, out_path: Path) -> Path:
+def _remove_overlay_from_page(
+    pdf_bytes: bytes,
+    out_path: Path,
+    crop_bbox: tuple[float, float, float, float] | None = None,
+    gs_names: set[str] | None = None,
+) -> Path:
     """Tar bort overlay-blocket ur innehållsströmmen och sparar ren PDF."""
     src = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
     page = src.pages[0]
 
-    gs_names = _find_semi_transparent_gs_names(page)
+    if gs_names is None:
+        gs_names = _find_semi_transparent_gs_names(page)
     logger.debug("Semi-transparenta grafiktillstånd att ta bort: %s", gs_names)
 
     instructions = list(pikepdf.parse_content_stream(page))
@@ -238,6 +281,12 @@ def _remove_overlay_from_page(pdf_bytes: bytes, out_path: Path) -> Path:
         page["/Contents"] = pikepdf.Stream(src, new_stream)
     else:
         contents.write(new_stream)
+
+    if crop_bbox is not None:
+        x1, y1, x2, y2 = crop_bbox
+        page["/MediaBox"] = pikepdf.Array([round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)])
+        if "/CropBox" in page:
+            del page["/CropBox"]
 
     src.save(str(out_path))
     return out_path
