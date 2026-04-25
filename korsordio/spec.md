@@ -288,10 +288,14 @@ anledning.
 
 #### `trailing`-pilen i detalj
 
-- Verifierad funktion: **ord-separator i lösningsmeningen** (när
-  SMS-svaret består av flera ord, en trailing-pil markerar var
-  uppdelningen sitter). Ligger på en bokstavsruta som hör till
-  lösningen.
+- Verifierad funktion: **ord-separator i lösningsmeningen**.
+  Lösningsmeningen bildas av `color: "caption"`-noderna lästa i
+  rad-/kolumnordning. När meningen består av flera ord placeras
+  en `trailing`-pil mellan grupperna för att markera mellanslag.
+  Pilen själv ligger på en bokstavsruta (caption- eller vanlig nod)
+  i meningen.
+- Detta gäller **inte** SMS-svaret (`smsIndex`-noderna) som är ett
+  separat och kortare svar.
 - Position: `arrow.position` är på node N med `edge: "right"`, men
   pilen ska **renderas i cell N+1** — alltså en kolumn till höger.
 - Form: hög smal triangel, basen = hela vänsterkanten av render-
