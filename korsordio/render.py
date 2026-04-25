@@ -12,6 +12,8 @@ from html import escape
 from pathlib import Path
 from typing import Iterable
 
+from .metadata import parse_name
+
 CELL = 36
 PADDING = 20
 STROKE = 1.0
@@ -130,10 +132,15 @@ def _build_svg(data: dict, debug: bool) -> str:
         f'viewBox="0 0 {width} {height}">'
     )
     parts.append(f'<rect width="{width}" height="{height}" fill="white"/>')
+    name = data.get("name", "")
+    try:
+        title = parse_name(name).display_title()
+    except (ValueError, IndexError):
+        title = name
     parts.append(
         f'<text x="{PADDING}" y="{PADDING + 18}" '
         f'font-family="sans-serif" font-size="{TITLE_FONT_PX}" '
-        f'font-weight="bold">{escape(data.get("name", ""))}</text>'
+        f'font-weight="bold">{escape(title)}</text>'
     )
 
     parts.extend(_render_nodes(data.get("nodes", []), cx, cy, debug))

@@ -10,6 +10,13 @@ Public API:
     render_pdf(data, output_path, debug=False) -> Path
 """
 from .fetch import fetch_crossword
+from .metadata import CrosswordMeta, parse_name
 from .render import render_pdf, render_svg
 
-__all__ = ["fetch_crossword", "render_svg", "render_pdf"]
+__all__ = [
+    "fetch_crossword",
+    "render_svg",
+    "render_pdf",
+    "CrosswordMeta",
+    "parse_name",
+]
