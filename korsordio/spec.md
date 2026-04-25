@@ -15,7 +15,8 @@ faktiska anrop, inte officiellt dokumenterat. Påståenden markerade
 | Bilder (preview/illustration) | `https://app.korsord.io/media/<uuid>.jpg`                    |
 
 `<år>` är tvåsiffrigt (`26` = 2026). `<vecka>` har inget zero-padding.
-`<slug>` är t.ex. `sverigekrysset` eller `miljonkrysset`.
+`<slug>` är `sverigekrysset` eller `miljonkrysset` — det är de enda
+titlar som publiceras på korsord.io idag.
 
 ### Hitta UUID från en kryss-URL
 
@@ -325,10 +326,15 @@ egen renderare också gör).
 
 ## `name`-fältet
 
-Format observerat: `SK_<YYMMDD>$<intern-id>`. För Sverigekrysset
-v17 2026 (publicerad 2026-04-20) är `name = "SK_260420$5067"`.
+Format: `<PREFIX>_<YYMMDD>$<intern-id>` där prefixet identifierar
+titeln:
 
-**(antagande)** Miljonkrysset har prefix `MK_`.
+- `SK_` — Sverigekrysset (`SK_260420$5067` för v17 2026,
+  publicerad 2026-04-20)
+- `MK_` — Miljonkrysset (`MK_260420$1631` för v17 2026)
+
+Sverigekrysset och Miljonkrysset är de enda titlar som publiceras
+på korsord.io idag.
 
 ## CMYK → RGB-konvertering
 
