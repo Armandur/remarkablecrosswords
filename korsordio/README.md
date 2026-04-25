@@ -8,7 +8,7 @@ Bygger via `cairosvg` på en strukturerad SVG-mall som tar fram
 korsordsrutor, ledtrådar (text + bild + overlay), pilar och
 färgkodade lösningsrutor utifrån korsord.io:s `.crossword`-JSON.
 
-Datamodellen är dokumenterad i `../korsord.io-spec.md`.
+Datamodellen är dokumenterad i [`spec.md`](spec.md).
 
 ## Installation
 

@@ -4,7 +4,7 @@ Public API:
     render_svg(data: dict, debug: bool = False) -> str
     render_pdf(data: dict, output: Path, debug: bool = False) -> Path
 
-Bakgrund och datamodell finns i `korsord.io-spec.md` i projektets rot.
+Bakgrund och datamodell finns i `spec.md` i samma katalog.
 """
 from __future__ import annotations
 
