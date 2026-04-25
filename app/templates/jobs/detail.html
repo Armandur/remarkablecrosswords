@@ -1,13 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Jobb #{{ job.id }}</h1>
-<p>Typ: {{ job.kind }}</p>
-<p>Status: {{ job.state }}</p>
-<p>Startad: {{ job.started_at }}</p>
-<p>Färdig: {{ job.finished_at }}</p>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/jobs">Loggar</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Jobb #{{ job.id }}</li>
+  </ol>
+</nav>
 
-<h2>Logg</h2>
-<pre style="background: #eee; padding: 1rem; overflow: auto;">{{ job.log }}</pre>
-
-<a href="/jobs">Tillbaka till listan</a>
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Jobbdetaljer</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="text-muted small d-block">ID</label>
+                    <code>{{ job.id }}</code>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small d-block">Typ</label>
+                    <span class="fw-bold">{{ job.kind }}</span>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small d-block">Status</label>
+                    {% if job.state == 'done' %}
+                        <span class="badge bg-success">Lyckades</span>
+                    {% elif job.state == 'failed' %}
+                        <span class="badge bg-danger">Misslyckades</span>
+                    {% elif job.state == 'running' %}
+                        <span class="badge bg-warning text-dark">Körs</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ job.state }}</span>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small d-block">Startad</label>
+                    <span>{{ job.started_at }}</span>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small d-block">Färdig</label>
+                    <span>{{ job.finished_at or '-' }}</span>
+                </div>
+            </div>
+            <div class="card-footer bg-white">
+                <a href="/jobs" class="btn btn-sm btn-outline-secondary w-100">Tillbaka till listan</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Logg</h5>
+            </div>
+            <div class="card-body p-0">
+                <pre class="m-0 p-3 bg-dark text-light small" style="max-height: 500px; overflow-y: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">{{ job.log or '(ingen logg)' }}</pre>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

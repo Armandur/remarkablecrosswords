@@ -1,31 +1,129 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Korsord</h1>
-<table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Källa</th>
-            <th>Namn</th>
-            <th>Synkad</th>
-            <th>Åtgärder</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for cw, issue, source in crosswords %}
-        <tr>
-            <td>{{ cw.id }}</td>
-            <td>{{ source.name }}</td>
-            <td>{{ issue.name }}</td>
-            <td>{% if cw.synced_at %}{{ cw.synced_at }}{% else %}Nej{% endif %}</td>
-            <td>
-                <form action="/crosswords/{{ cw.id }}/sync" method="POST" style="display:inline">
-                    <button type="submit">Synka</button>
-                </form>
-                <a href="/crosswords/{{ cw.id }}/download">Ladda ner</a>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<h1 class="mb-4">Korsord</h1>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="/crosswords" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="source_id" class="form-label small fw-bold">Källa</label>
+                <select name="source_id" id="source_id" class="form-select form-select-sm">
+                    <option value="">Alla källor</option>
+                    {% for s in sources %}
+                    <option value="{{ s.id }}" {% if source_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="from_date" class="form-label small fw-bold">Från</label>
+                <input type="date" name="from_date" id="from_date" class="form-select form-select-sm" value="{{ from_date or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label for="to_date" class="form-label small fw-bold">Till</label>
+                <input type="date" name="to_date" id="to_date" class="form-select form-select-sm" value="{{ to_date or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label for="synced" class="form-label small fw-bold">Status</label>
+                <select name="synced" id="synced" class="form-select form-select-sm">
+                    <option value="">Alla</option>
+                    <option value="yes" {% if synced == 'yes' %}selected{% endif %}>Synkad</option>
+                    <option value="no" {% if synced == 'no' %}selected{% endif %}>Väntar</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary">Filtrera</button>
+                <a href="/crosswords" class="btn btn-sm btn-link text-decoration-none">Rensa</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Namn</th>
+                        <th>Källa</th>
+                        <th>Datum / Info</th>
+                        <th>Synkstatus</th>
+                        <th class="text-end">Åtgärder</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for cw, issue, source in crosswords %}
+                    <tr>
+                        <td class="align-middle fw-bold">{{ issue.name }}</td>
+                        <td class="align-middle">{{ source.name }}</td>
+                        <td class="align-middle text-muted small">
+                            {{ cw.created_at.strftime('%Y-%m-%d %H:%M') if cw.created_at else '-' }}
+                        </td>
+                        <td class="align-middle" id="sync-status-{{ cw.id }}">
+                            {% if cw.synced_at %}
+                                <span class="badge bg-success" title="Synkad: {{ cw.synced_at }}">Synkad</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Väntar</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end align-middle">
+                            <div class="btn-group btn-group-sm">
+                                {% if cw.pdf_path %}
+                                <a href="/crosswords/{{ cw.id }}/view" target="_blank" class="btn btn-outline-primary">Visa</a>
+                                <a href="/crosswords/{{ cw.id }}/download" class="btn btn-outline-secondary">Ladda ned</a>
+                                {% endif %}
+                                <button type="button" class="btn btn-outline-success" onclick="syncCrossword({{ cw.id }}, this)">Synka</button>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not crosswords %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">Inga korsord hittades</td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+async function syncCrossword(id, btn) {
+    const statusEl = document.getElementById(`sync-status-${id}`);
+    if (btn) btn.disabled = true;
+    statusEl.innerHTML = '<span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1" role="status"></span>Synkar...</span>';
+
+    let data;
+    try {
+        const r = await fetch(`/crosswords/${id}/sync`, { method: 'POST' });
+        data = await r.json();
+    } catch(e) {
+        statusEl.innerHTML = '<span class="badge bg-danger">Nätverksfel</span>';
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const jobId = data.job_id;
+    statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-warning text-dark text-decoration-none">Jobb ${jobId} körs...</a>`;
+
+    const poll = setInterval(async () => {
+        try {
+            const r = await fetch(`/jobs/${jobId}/status`);
+            const s = await r.json();
+            if (s.state === 'done') {
+                clearInterval(poll);
+                statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-success text-decoration-none text-white">Lyckades</a>`;
+                if (btn) btn.disabled = false;
+            } else if (s.state === 'failed') {
+                clearInterval(poll);
+                statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-danger text-decoration-none text-white">Misslyckades</a>`;
+                if (btn) btn.disabled = false;
+            }
+        } catch(e) {
+            clearInterval(poll);
+            if (btn) btn.disabled = false;
+        }
+    }, 1500);
+}
+</script>
 {% endblock %}

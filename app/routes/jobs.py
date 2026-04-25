@@ -22,6 +22,14 @@ async def list_jobs(
         {"jobs": jobs, "offset": offset, "limit": limit, "total": total},
     )
 
+@router.get("/{job_id}/status")
+async def job_status(job_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from fastapi.responses import JSONResponse
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"id": job.id, "state": job.state})
+
 @router.get("/{job_id}")
 async def job_detail(job_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     job = db.query(Job).filter(Job.id == job_id).first()
