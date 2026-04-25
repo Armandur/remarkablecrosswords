@@ -21,11 +21,27 @@ Stdlib räcker för fetch (`urllib`).
 ## Användning som bibliotek
 
 ```python
-from korsordio import fetch_crossword, render_pdf, render_svg
+from korsordio import (
+    fetch_crossword, fetch_competition_info,
+    render_pdf, render_svg, parse_name,
+)
 
 data = fetch_crossword("sverigekrysset", week=17, year=26)
-render_pdf(data, "krysset.pdf")          # produktionsmässig
-svg_text = render_svg(data, debug=True)  # med cell-koordinater
+
+# Mänskligt läsbar metadata från name-fältet:
+meta = parse_name(data["name"])
+print(meta.display_title())  # "Sverigekrysset 2026v17, publicerat 2026-04-20, tävlingsnr 5067"
+print(meta.slug())           # "sverigekrysset-2026-w17"
+
+# Standardrendering:
+render_pdf(data, "krysset.pdf")
+
+# Inkludera SMS-svarsrutor + tävlingsinfo:
+info = fetch_competition_info("sverigekrysset", 17, 26)
+render_pdf(data, "krysset-full.pdf", sms_boxes=True, competition_info=info)
+
+# Felsökningsläge:
+svg_text = render_svg(data, debug=True)
 ```
 
 ## CLI
@@ -34,36 +50,50 @@ svg_text = render_svg(data, debug=True)  # med cell-koordinater
 # Hämta från korsord.io och skriv PDF:
 python -m korsordio sverigekrysset 17 26 --pdf krysset.pdf
 
-# Båda formaten i samma körning + debug-koordinater:
-python -m korsordio miljonkrysset 17 26 --pdf out.pdf --svg out.svg --debug
+# Båda formaten + SMS-svarsrutor + tävlingsinfo:
+python -m korsordio miljonkrysset 17 26 \
+    --pdf out.pdf --svg out.svg \
+    --sms-boxes --competition-info
 
-# Renderera en lokal .crossword-fil:
-python -m korsordio --file ./sverigekrysset-17-26.crossword --svg out.svg
+# Renderera en lokal .crossword-fil med debug-koordinater:
+python -m korsordio --file ./sverigekrysset-17-26.crossword \
+    --svg out.svg --debug
 ```
+
+| Flagga                | Beskrivning                                                   |
+| --------------------- | ------------------------------------------------------------- |
+| `--pdf PATH`          | Skriv PDF (kräver cairosvg).                                  |
+| `--svg PATH`          | Skriv SVG.                                                    |
+| `--debug`             | Cell-koordinater i grått (felsökning).                        |
+| `--sms-boxes`         | Rad med tomma SMS-svarsrutor under krysset (turkos).          |
+| `--competition-info`  | Hämta + rendera tävlingsinfo. Kräver slug+week+year.          |
+| `--file PATH`         | Renderera lokal .crossword-fil istället för att hämta online. |
 
 Minst en av `--pdf` och `--svg` måste anges. När båda används
 återanvänds SVG-strängen (en rendering, två format).
 
-`--debug` ritar koordinater (`x,y`) i grått i varje rutas övre högra
-hörn — användbart för att referera till specifika rutor när man
-felsöker layouten.
-
 ## Public API
 
-| Funktion                                 | Beskrivning                                          |
-| ---------------------------------------- | ---------------------------------------------------- |
-| `fetch_crossword(slug, week, year)`      | Hämta `.crossword`-JSON från app.korsord.io.         |
-| `render_svg(data, debug=False)`          | Returnera SVG som sträng.                            |
-| `render_pdf(data, output, debug=False)`  | Skriv PDF till `output`. Kräver `cairosvg`.          |
+| Funktion                                                            | Beskrivning                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `fetch_crossword(slug, week, year)`                                 | Hämta `.crossword`-JSON från app.korsord.io.                             |
+| `fetch_competition_info(slug, week, year)`                          | Skrapa tävlingsinfo (Tävla-modal) från HTML-sidan.                       |
+| `parse_name(name)`                                                  | Tolka `name`-fältet → `CrosswordMeta` (titel, datum, vecka, tävlingsnr). |
+| `render_svg(data, debug, sms_boxes, competition_info)`              | Returnera SVG som sträng.                                                |
+| `render_pdf(data, output, debug, sms_boxes, competition_info)`      | Skriv PDF till `output`. Kräver `cairosvg`.                              |
+
+Dataklasser: `CrosswordMeta`, `CompetitionInfo`, `CompetitionWay`.
 
 ## Modulstruktur
 
 ```
 korsordio/
   __init__.py    # public API
-  fetch.py       # urllib-baserad hämtning från app.korsord.io
-  render.py      # SVG-byggare, text-fitting, pilrendering
+  fetch.py       # urllib-baserad hämtning + tävlingsinfo-skrapning
+  metadata.py    # parse_name → CrosswordMeta (titel, datum, vecka, tävlingsnr)
+  render.py      # SVG-byggare, text-fitting, pilrendering, footer-zoner
   __main__.py    # CLI (argparse)
+  spec.md        # reverse-engineered datamodell
   README.md
 ```
 

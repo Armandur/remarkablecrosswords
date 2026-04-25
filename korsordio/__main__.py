@@ -20,7 +20,7 @@ import json
 import sys
 from pathlib import Path
 
-from .fetch import fetch_crossword
+from .fetch import fetch_competition_info, fetch_crossword
 from .render import render_pdf, render_svg
 
 
@@ -57,6 +57,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skriv ut cell-koordinater (x,y) i varje ruta.",
     )
+    p.add_argument(
+        "--sms-boxes",
+        action="store_true",
+        help="Lägg en rad tomma SMS-svarsrutor (turkos) under krysset "
+        "för manuell sammanställning av lösningskoden.",
+    )
+    p.add_argument(
+        "--competition-info",
+        action="store_true",
+        help="Hämta tävlingsinfo från korsord.io och rita under krysset. "
+        "Kräver slug+week+year (inte --file).",
+    )
     return p
 
 
@@ -75,13 +87,27 @@ def main(argv: list[str] | None = None) -> int:
         print("error: minst en av --svg och --pdf måste anges", file=sys.stderr)
         return 2
 
+    competition_info = None
+    if args.competition_info:
+        if args.file:
+            print(
+                "error: --competition-info kräver slug+week+year, inte --file",
+                file=sys.stderr,
+            )
+            return 2
+        competition_info = fetch_competition_info(args.spec, args.week, args.year)
+
+    render_kwargs = dict(
+        debug=args.debug,
+        sms_boxes=args.sms_boxes,
+        competition_info=competition_info,
+    )
+
     if args.svg:
-        # Återanvänd SVG-strängen om både --svg och --pdf är satta
-        svg = render_svg(data, debug=args.debug)
-        args.svg.write_text(svg)
+        args.svg.write_text(render_svg(data, **render_kwargs))
         print(f"Wrote {args.svg} ({args.svg.stat().st_size} bytes)")
     if args.pdf:
-        render_pdf(data, args.pdf, debug=args.debug)
+        render_pdf(data, args.pdf, **render_kwargs)
         print(f"Wrote {args.pdf} ({args.pdf.stat().st_size} bytes)")
     return 0
 

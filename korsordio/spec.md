@@ -40,6 +40,26 @@ från 2025.
 Ingen autentisering krävs för att nå HTML eller `.crossword`-JSON.
 Inga cookies, ingen session, ingen API-nyckel.
 
+### Tävla-modalen i HTML
+
+På varje kryss-sida finns en `<div id="competeModal">` med
+instruktioner för hur man tävlar. Den innehåller huvudrubrik, en
+underrubrik, och tre tävlingsmetoder (webb, telefon, SMS) — varje
+metod har en titel, instruktioner, tävlingsnummer (samma som
+`name`-fältets `$<id>`-del) och pris. Texterna kan ändras vid
+prisjustering eller leverantörsbyte, så skrapa varje gång om data
+ska visas för användaren.
+
+Mönster för att hitta varje metod-block:
+
+```
+<h4 class="text-center text-danger">{titel}</h4>
+<p class="text-center minh-lg-96">{instruktioner}</p>
+```
+
+Tävla-modalen är bara meningsfull för aktuella kryss — gamla kryss
+visar fortfarande modalen i HTML:en, men inlämningen är stängd.
+
 ## .crossword-fil
 
 Filändelsen är `.crossword` men innehållet är `application/json`.
@@ -330,12 +350,16 @@ egen renderare också gör).
 
 ## `name`-fältet
 
-Format: `<PREFIX>_<YYMMDD>$<intern-id>` där prefixet identifierar
+Format: `<PREFIX>_<YYMMDD>$<tävlingsnummer>` där prefixet identifierar
 titeln:
 
 - `SK_` — Sverigekrysset (`SK_260420$5067` för v17 2026,
-  publicerad 2026-04-20)
+  publicerad 2026-04-20, tävlingsnummer 5067)
 - `MK_` — Miljonkrysset (`MK_260420$1631` för v17 2026)
+
+Tävlingsnumret motsvarar siffran efter `$` och visas i webbklientens
+"Tävla"-popup. Det används vid SMS-/telefoninlämning av
+lösningskoden för aktuella kryss.
 
 Sverigekrysset och Miljonkrysset är de enda titlar som publiceras
 på korsord.io idag.

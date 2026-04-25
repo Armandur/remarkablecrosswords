@@ -9,14 +9,22 @@ Public API:
     render_svg(data, debug=False) -> str
     render_pdf(data, output_path, debug=False) -> Path
 """
-from .fetch import fetch_crossword
+from .fetch import (
+    CompetitionInfo,
+    CompetitionWay,
+    fetch_competition_info,
+    fetch_crossword,
+)
 from .metadata import CrosswordMeta, parse_name
 from .render import render_pdf, render_svg
 
 __all__ = [
     "fetch_crossword",
+    "fetch_competition_info",
     "render_svg",
     "render_pdf",
     "CrosswordMeta",
+    "CompetitionInfo",
+    "CompetitionWay",
     "parse_name",
 ]

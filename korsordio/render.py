@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
+from .fetch import CompetitionInfo
 from .metadata import parse_name
 
 CELL = 36
@@ -46,22 +47,50 @@ FIT_SAFETY = 0.92  # marginal mot fontvariationer i cairosvg
 # Public API
 
 
-def render_svg(data: dict, debug: bool = False) -> str:
+def render_svg(
+    data: dict,
+    debug: bool = False,
+    sms_boxes: bool = False,
+    competition_info: Optional[CompetitionInfo] = None,
+) -> str:
     """Returnerar en SVG-sträng för korsordet.
 
-    `data` är parsed `.crossword`-JSON. När `debug=True` ritas
-    cell-koordinater (x,y) i grått i övre högra hörnet av varje
-    bokstavs- och ledtrådsruta — användbart för felsökning.
+    `data` är parsed `.crossword`-JSON.
+
+    Flaggor:
+      `debug`            – cell-koordinater i grått (för felsökning)
+      `sms_boxes`        – lägg en rad tomma SMS-svarsrutor (samma
+                           färg som smsIndex-rutorna) under krysset
+                           där användaren kan sammanställa lösnings-
+                           koden. Antalet motsvarar antal smsIndex-noder.
+      `competition_info` – CompetitionInfo från fetch_competition_info();
+                           ritas som flerkolumns-block under krysset.
     """
-    return _build_svg(data, debug=debug)
+    return _build_svg(
+        data,
+        debug=debug,
+        sms_boxes=sms_boxes,
+        competition_info=competition_info,
+    )
 
 
-def render_pdf(data: dict, output: Path | str, debug: bool = False) -> Path:
+def render_pdf(
+    data: dict,
+    output: Path | str,
+    debug: bool = False,
+    sms_boxes: bool = False,
+    competition_info: Optional[CompetitionInfo] = None,
+) -> Path:
     """Rendera och skriv PDF till `output`. Kräver `cairosvg`."""
     import cairosvg  # type: ignore
 
     out_path = Path(output)
-    svg = render_svg(data, debug=debug)
+    svg = render_svg(
+        data,
+        debug=debug,
+        sms_boxes=sms_boxes,
+        competition_info=competition_info,
+    )
     cairosvg.svg2pdf(bytestring=svg.encode("utf-8"), write_to=str(out_path))
     return out_path
 
@@ -115,11 +144,26 @@ def _fit_text_to_box(text: str, box_w: float, box_h: float) -> tuple[float, list
 # SVG-builder
 
 
-def _build_svg(data: dict, debug: bool) -> str:
+def _build_svg(
+    data: dict,
+    debug: bool,
+    sms_boxes: bool,
+    competition_info: Optional[CompetitionInfo],
+) -> str:
     rows, cols = data["rows"], data["cols"]
     width = cols * CELL + 2 * PADDING
     title_h = 30
-    height = rows * CELL + 2 * PADDING + title_h
+    grid_h = rows * CELL
+
+    sms_count = (
+        sum(1 for n in data.get("nodes", []) if n.get("smsIndex") is not None)
+        if sms_boxes
+        else 0
+    )
+    sms_zone_h = (CELL * 2 + 8) if sms_count else 0
+    comp_zone_h = _competition_zone_height(competition_info, width)
+
+    height = title_h + grid_h + sms_zone_h + comp_zone_h + 2 * PADDING
 
     def cx(x: float) -> float: return PADDING + x * CELL
     def cy(y: float) -> float: return PADDING + title_h + y * CELL
@@ -147,8 +191,126 @@ def _build_svg(data: dict, debug: bool) -> str:
     parts.extend(_render_leads(data.get("leads", []), cx, cy, debug))
     parts.extend(_render_arrows(data.get("arrows", []), data.get("leads", []), cx, cy))
 
+    cursor_y = PADDING + title_h + grid_h
+    if sms_count:
+        parts.extend(_render_sms_boxes(sms_count, width, cursor_y))
+        cursor_y += sms_zone_h
+    if competition_info and competition_info.ways:
+        parts.extend(_render_competition_info(competition_info, width, cursor_y))
+
     parts.append("</svg>")
     return "\n".join(parts)
+
+
+def _render_sms_boxes(count: int, total_width: float, top: float) -> Iterable[str]:
+    label_y = top + 14
+    yield (
+        f'<text x="{total_width / 2}" y="{label_y}" '
+        f'font-family="sans-serif" font-size="11" font-weight="bold" '
+        f'text-anchor="middle">Lösningskod</text>'
+    )
+    box_y = top + 22
+    boxes_w = count * CELL
+    start_x = (total_width - boxes_w) / 2
+    for i in range(count):
+        bx = start_x + i * CELL
+        yield (
+            f'<rect x="{bx}" y="{box_y}" width="{CELL}" height="{CELL}" '
+            f'fill="{SMS_BG}" stroke="black" stroke-width="{STROKE}"/>'
+        )
+        yield (
+            f'<text x="{bx + 2}" y="{box_y + SOLUTION_INDEX_FONT + 1}" '
+            f'font-family="sans-serif" font-size="{SOLUTION_INDEX_FONT}" '
+            f'font-weight="bold">{i + 1}</text>'
+        )
+
+
+COMP_FONT = 9
+COMP_HEADER_FONT = 12
+COMP_LINE_H = COMP_FONT * 1.25
+COMP_COL_PADDING = 12
+COMP_TOP_PADDING = 14
+
+
+def _competition_zone_height(
+    info: Optional[CompetitionInfo], total_width: float
+) -> float:
+    if not info or not info.ways:
+        return 0
+    col_w = (total_width - 2 * PADDING) / len(info.ways) - COMP_COL_PADDING
+    max_lines = 0
+    for way in info.ways:
+        lines = _wrap_text(way.instructions, col_w, COMP_FONT)
+        max_lines = max(max_lines, len(lines))
+    return (
+        COMP_TOP_PADDING * 2
+        + COMP_HEADER_FONT * 1.4    # huvudrubrik
+        + COMP_LINE_H               # subheader
+        + COMP_HEADER_FONT * 1.4    # via X-rubriker
+        + max_lines * COMP_LINE_H   # längsta instruktionen
+        + 8                          # extra marginal
+    )
+
+
+def _render_competition_info(
+    info: CompetitionInfo, total_width: float, top: float
+) -> Iterable[str]:
+    y = top + COMP_TOP_PADDING + COMP_HEADER_FONT
+    yield (
+        f'<text x="{total_width / 2}" y="{y}" '
+        f'font-family="sans-serif" font-size="{COMP_HEADER_FONT}" '
+        f'font-weight="bold" text-anchor="middle">'
+        f'{escape(info.header)}</text>'
+    )
+    y += COMP_LINE_H + 2
+    yield (
+        f'<text x="{total_width / 2}" y="{y}" '
+        f'font-family="sans-serif" font-size="{COMP_FONT}" '
+        f'text-anchor="middle">{escape(info.subheader)}</text>'
+    )
+    y += COMP_LINE_H + 4
+
+    n = len(info.ways)
+    inner_w = total_width - 2 * PADDING
+    col_w = inner_w / n
+    way_top = y
+    for i, way in enumerate(info.ways):
+        col_x = PADDING + i * col_w
+        center_x = col_x + col_w / 2
+        # Rubrik per kolumn
+        yield (
+            f'<text x="{center_x}" y="{way_top + COMP_HEADER_FONT}" '
+            f'font-family="sans-serif" font-size="{COMP_HEADER_FONT}" '
+            f'font-weight="bold" text-anchor="middle">'
+            f'{escape(way.name)}</text>'
+        )
+        # Instruktioner radbrutna
+        lines = _wrap_text(way.instructions, col_w - COMP_COL_PADDING, COMP_FONT)
+        text_y = way_top + COMP_HEADER_FONT * 1.4 + COMP_FONT
+        for line in lines:
+            yield (
+                f'<text x="{center_x}" y="{text_y}" '
+                f'font-family="sans-serif" font-size="{COMP_FONT}" '
+                f'text-anchor="middle">{escape(line)}</text>'
+            )
+            text_y += COMP_LINE_H
+
+
+def _wrap_text(text: str, max_width: float, font_size: float) -> list[str]:
+    """Enkel ord-radbrytning baserat på CHAR_WIDTHS."""
+    words = text.split()
+    if not words:
+        return []
+    lines: list[list[str]] = [[]]
+    width = lambda s: _text_width_units(s) * font_size
+
+    for word in words:
+        candidate = " ".join(lines[-1] + [word]) if lines[-1] else word
+        if width(candidate) <= max_width or not lines[-1]:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+    return [" ".join(line) for line in lines]
 
 
 def _render_nodes(nodes: list[dict], cx, cy, debug: bool) -> Iterable[str]:
