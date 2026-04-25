@@ -18,3 +18,4 @@ PDF_INCOMING_DIR = DATA_DIR / "pdfs" / "incoming"
 PDF_CROSSWORDS_DIR = DATA_DIR / "pdfs" / "crosswords"
 PDF_SYNCED_DIR = DATA_DIR / "pdfs" / "synced"
 QUEUE_DIR = Path(os.environ.get("QUEUE_DIR", str(DATA_DIR / "queue"))).resolve()
+RMAPI_CONFIG_PATH = Path(os.environ.get("RMAPI_CONFIG_PATH", Path.home() / ".config" / "rmapi" / "rmapi.conf")).resolve()

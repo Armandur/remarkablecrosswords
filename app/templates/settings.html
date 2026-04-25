@@ -1,47 +1,254 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Inställningar</h1>
+<h1 class="mb-4">Inställningar</h1>
 
-<h2>reMarkable</h2>
-<p>Aktiv klient: <strong>{{ remarkable_client }}</strong></p>
+{% if flash_msg %}
+<div class="alert alert-{{ flash_type }} alert-dismissible fade show" role="alert">
+    {{ flash_msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
 
-<h2>Notifieringar</h2>
-<table>
-    <thead>
-        <tr>
-            <th>Typ</th>
-            <th>Konfig</th>
-            <th>Status</th>
-            <th>Åtgärder</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for target in targets %}
-        <tr>
-            <td>{{ target.kind }}</td>
-            <td><code>{{ target.config_json }}</code></td>
-            <td>{% if target.enabled %}Aktiv{% else %}Inaktiv{% endif %}</td>
-            <td>
-                <form action="/settings/notifications/{{ target.id }}/toggle" method="POST" style="display:inline">
-                    <button type="submit">Växla</button>
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm h-100 border-info">
+            <div class="card-header bg-info text-white">
+                <h2 class="h5 mb-0">reMarkable</h2>
+            </div>
+            <div class="card-body">
+                <p class="mb-1">Aktiv klient: <strong>{{ remarkable_client }}</strong></p>
+                <p class="mb-2">
+                    Status:
+                    {% if rmapi_authenticated %}
+                        <span class="badge bg-success">Autentiserad</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Ej autentiserad</span>
+                    {% endif %}
+                </p>
+                {% if rmapi_authenticated %}
+                <p class="mb-0 d-flex align-items-center gap-2">
+                    <span class="text-muted small">Mapp:</span>
+                    <code id="rmFolderDisplay">{{ remarkable_folder }}</code>
+                    <button class="btn btn-sm btn-outline-secondary py-0"
+                            data-bs-toggle="modal" data-bs-target="#rmBrowserModal">Bläddra</button>
+                </p>
+                {% endif %}
+                {% if not rmapi_authenticated %}
+                <hr>
+                <p class="small text-muted mb-2">
+                    Hämta en engångskod på
+                    <a href="https://my.remarkable.com/device/desktop/connect" target="_blank">
+                        my.remarkable.com/device/desktop/connect
+                    </a>
+                    och klistra in den nedan.
+                </p>
+                <form action="/settings/remarkable/connect" method="POST" class="d-flex gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="text" name="code" class="form-control form-control-sm font-monospace"
+                           placeholder="abcd1234" maxlength="12" required autocomplete="off">
+                    <button type="submit" class="btn btn-sm btn-primary text-nowrap">Anslut</button>
                 </form>
-                <form action="/settings/notifications/{{ target.id }}/delete" method="POST" style="display:inline">
-                    <button type="submit" style="color: red;">Ta bort</button>
-                </form>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Notifieringar</h2>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Typ</th>
+                                <th>Konfiguration</th>
+                                <th>Status</th>
+                                <th class="text-end">Åtgärder</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for target in targets %}
+                            <tr>
+                                <td class="align-middle fw-bold">{{ target.kind }}</td>
+                                <td class="align-middle"><code>{{ target.config_json }}</code></td>
+                                <td class="align-middle">
+                                    {% if target.enabled %}
+                                        <span class="badge bg-success">Aktiv</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inaktiv</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end align-middle">
+                                    <form action="/settings/notifications/{{ target.id }}/toggle" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Växla</button>
+                                    </form>
+                                    <form action="/settings/notifications/{{ target.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Ta bort notifieringsmål?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Ta bort</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        {% if not targets %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">Inga notifieringar konfigurerade</td>
+                            </tr>
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 
-<h3>Lägg till notifiering</h3>
-<form action="/settings/notifications" method="POST">
-    <label>Typ:</label>
-    <select name="kind">
-        <option value="ntfy">ntfy</option>
-    </select>
-    <label>Config JSON:</label>
-    <input type="text" name="config_json" value='{"url": "https://ntfy.sh/my-secret-topic"}'>
-    <button type="submit">Lägg till</button>
-</form>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Lägg till notifiering</h5>
+            </div>
+            <div class="card-body">
+                <form action="/settings/notifications" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">Typ</label>
+                        <select name="kind" class="form-select">
+                            <option value="ntfy">ntfy</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Config JSON</label>
+                        <input type="text" name="config_json" class="form-control font-monospace" value='{"url": "https://ntfy.sh/my-secret-topic"}' required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Lägg till</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- reMarkable mappläsare -->
+<div class="modal fade" id="rmBrowserModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Välj reMarkable-mapp</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="rmBrowserBody" style="min-height:300px; max-height:60vh; overflow-y:auto">
+                <div class="text-center py-5 text-muted">Laddar...</div>
+            </div>
+            <div class="modal-footer flex-column align-items-stretch gap-2">
+                <div class="d-flex gap-2">
+                    <input type="text" id="rmNewFolderName" class="form-control form-control-sm"
+                           placeholder="Nytt mappnamn" onkeydown="if(event.key==='Enter')rmMkdir()">
+                    <button class="btn btn-sm btn-outline-secondary text-nowrap" onclick="rmMkdir()">Skapa mapp</button>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted small">Vald: <code id="rmCurrentPath">/</code></span>
+                    <button class="btn btn-primary btn-sm" onclick="rmSelectFolder()">Välj denna mapp</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let rmPath = '/';
+
+function rmSegments(p) { return p === '/' ? [] : p.split('/').filter(Boolean); }
+
+function rmParent(p) {
+    const s = rmSegments(p);
+    return s.length <= 1 ? '/' : '/' + s.slice(0,-1).join('/');
+}
+
+function rmJoin(base, name) { return (base === '/' ? '' : base) + '/' + name; }
+
+function rmBreadcrumb(p) {
+    const segs = rmSegments(p);
+    let html = '<nav class="px-3 pt-2"><ol class="breadcrumb">';
+    html += '<li class="breadcrumb-item"><a href="#" onclick="rmNavigate(\'/\');return false">Root</a></li>';
+    let acc = '';
+    segs.forEach((s, i) => {
+        acc += '/' + s;
+        const cur = acc;
+        html += i === segs.length-1
+            ? `<li class="breadcrumb-item active">${s}</li>`
+            : `<li class="breadcrumb-item"><a href="#" onclick="rmNavigate('${cur}');return false">${s}</a></li>`;
+    });
+    return html + '</ol></nav>';
+}
+
+async function rmNavigate(path) {
+    rmPath = path;
+    document.getElementById('rmCurrentPath').textContent = path;
+    const body = document.getElementById('rmBrowserBody');
+    body.innerHTML = '<div class="text-center py-5"><div class="spinner-border spinner-border-sm"></div></div>';
+    let data;
+    try {
+        const r = await fetch(`/api/remarkable/ls?path=${encodeURIComponent(path)}`);
+        data = await r.json();
+    } catch(e) {
+        body.innerHTML = `<div class="alert alert-danger m-3">Fel: ${e}</div>`;
+        return;
+    }
+    let html = rmBreadcrumb(path);
+    html += '<div class="list-group list-group-flush">';
+    if (path !== '/') {
+        html += `<button class="list-group-item list-group-item-action text-muted"
+                    onclick="rmNavigate('${rmParent(path)}')">↑ ..</button>`;
+    }
+    data.items.filter(i=>i.is_dir).forEach(item => {
+        const p = rmJoin(path, item.name);
+        html += `<div class="list-group-item d-flex justify-content-between align-items-center py-2">
+            <button class="btn btn-link p-0 text-start text-decoration-none"
+                    onclick="rmNavigate('${p}')">📁 ${item.name}</button>
+            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Ta bort"
+                    onclick="rmDelete('${p}','${item.name}')">✕</button>
+        </div>`;
+    });
+    data.items.filter(i=>!i.is_dir).forEach(item => {
+        html += `<div class="list-group-item text-muted small py-1">📄 ${item.name}</div>`;
+    });
+    if (!data.items.length && path === '/') {
+        html += '<div class="list-group-item text-muted">Tomt</div>';
+    }
+    body.innerHTML = html + '</div>';
+}
+
+async function rmMkdir() {
+    const name = document.getElementById('rmNewFolderName').value.trim();
+    if (!name) return;
+    await fetch('/api/remarkable/mkdir', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({path: rmJoin(rmPath, name)})});
+    document.getElementById('rmNewFolderName').value = '';
+    rmNavigate(rmPath);
+}
+
+async function rmDelete(path, name) {
+    if (!confirm(`Ta bort "${name}"?`)) return;
+    await fetch('/api/remarkable/rm', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({path})});
+    rmNavigate(rmPath);
+}
+
+async function rmSelectFolder() {
+    await fetch('/api/remarkable/folder', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({folder: rmPath})});
+    document.getElementById('rmFolderDisplay').textContent = rmPath;
+    bootstrap.Modal.getInstance(document.getElementById('rmBrowserModal')).hide();
+}
+
+document.getElementById('rmBrowserModal')?.addEventListener('show.bs.modal', () => rmNavigate(
+    document.getElementById('rmFolderDisplay')?.textContent || '/'
+));
+</script>
 {% endblock %}
