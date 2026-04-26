@@ -124,7 +124,10 @@
                                         <button id="test-btn-{{ t.id }}" type="button" class="btn btn-outline-info"
                                                 onclick="testNotifier({{ t.id }})">Testa</button>
                                         <button type="button" class="btn btn-outline-secondary"
-                                                onclick="openEdit({{ t.id }}, {{ t.config | tojson }})">Redigera</button>
+                                                data-id="{{ t.id }}"
+                                                data-config='{{ t.config | tojson }}'
+                                                data-kind="{{ t.kind }}"
+                                                onclick="openEditFromBtn(this)">Redigera</button>
                                         <button type="button" class="btn btn-outline-secondary"
                                                 onclick="toggleNotifier({{ t.id }})">Växla</button>
                                         <button type="button" class="btn btn-outline-danger"
@@ -148,13 +151,17 @@
     <div class="col-md-7">
         <div class="card shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Lägg till notifiering</h5>
+                <h5 class="mb-0" id="form-card-title">Lägg till notifieringstjänst</h5>
                 <div id="mode-toggle" class="btn-group btn-group-sm d-none" role="group">
                     <button type="button" id="mode-form-btn" class="btn btn-primary" onclick="setMode('form')">Formulär</button>
                     <button type="button" id="mode-json-btn" class="btn btn-outline-secondary" onclick="setMode('json')">JSON</button>
                 </div>
             </div>
             <div class="card-body">
+                <div id="edit-mode-banner" class="alert alert-info d-flex justify-content-between align-items-center mb-3 d-none">
+                    <span>Redigerar befintlig tjänst.</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="cancelEdit()">Avbryt</button>
+                </div>
                 <form action="/settings/notifications" method="POST" id="notif-form" onsubmit="formSubmit(event)">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="kind" id="hidden-kind" value="">
@@ -254,74 +261,10 @@
                         </div>
 
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary">Lägg till</button>
+                            <button type="submit" id="form-submit-btn" class="btn btn-primary">Lägg till</button>
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Redigera notifiering -->
-<div class="modal fade" id="editNotifModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Redigera notifiering</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Server</label>
-                    <div class="mb-2">
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="edit_server_type" id="edit-srv-public" value="public" checked onchange="editToggleServer()">
-                            <label class="form-check-label" for="edit-srv-public">ntfy.sh (publik)</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="edit_server_type" id="edit-srv-custom" value="custom" onchange="editToggleServer()">
-                            <label class="form-check-label" for="edit-srv-custom">Anpassad</label>
-                        </div>
-                    </div>
-                    <div id="edit-custom-server" class="d-none">
-                        <input type="url" id="edit-field-server" class="form-control form-control-sm" placeholder="https://din-server.example.com">
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Ämne (topic)</label>
-                    <input type="text" id="edit-field-topic" class="form-control form-control-sm" placeholder="mitt-korsord-ämne">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Autentisering</label>
-                    <div class="mb-2">
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="edit_auth_type" id="edit-auth-none" value="none" checked onchange="editToggleAuth()">
-                            <label class="form-check-label" for="edit-auth-none">Ingen</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="edit_auth_type" id="edit-auth-token" value="token" onchange="editToggleAuth()">
-                            <label class="form-check-label" for="edit-auth-token">Token</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="edit_auth_type" id="edit-auth-password" value="password" onchange="editToggleAuth()">
-                            <label class="form-check-label" for="edit-auth-password">Lösenord</label>
-                        </div>
-                    </div>
-                    <div id="edit-token-field" class="d-none">
-                        <input type="text" id="edit-field-token" class="form-control form-control-sm font-monospace" placeholder="tk_...">
-                    </div>
-                    <div id="edit-password-fields" class="d-none">
-                        <div class="row g-2">
-                            <div class="col"><input type="text" id="edit-field-username" class="form-control form-control-sm" placeholder="Användarnamn"></div>
-                            <div class="col"><input type="password" id="edit-field-password" class="form-control form-control-sm" placeholder="Lösenord"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Avbryt</button>
-                <button type="button" class="btn btn-primary" onclick="saveEdit()">Spara</button>
             </div>
         </div>
     </div>
@@ -554,52 +497,60 @@ function formSubmit(e) {
     }
 }
 
-// --- Redigera notifiering ---
-let editTargetId = null;
+// --- Redigera i samma formulär ---
+let editId = null;
 
-function openEdit(id, cfg) {
-    editTargetId = id;
-    const server = cfg.server || 'https://ntfy.sh';
-    const isCustom = server !== 'https://ntfy.sh';
-    document.getElementById('edit-srv-public').checked = !isCustom;
-    document.getElementById('edit-srv-custom').checked = isCustom;
-    document.getElementById('edit-custom-server').classList.toggle('d-none', !isCustom);
-    document.getElementById('edit-field-server').value = isCustom ? server : '';
-    document.getElementById('edit-field-topic').value = cfg.topic || cfg.url || '';
-    const authType = cfg.auth_type || 'none';
-    document.querySelector(`input[name="edit_auth_type"][value="${authType}"]`).checked = true;
-    document.getElementById('edit-field-token').value = cfg.token || '';
-    document.getElementById('edit-field-username').value = cfg.username || '';
-    document.getElementById('edit-field-password').value = cfg.password || '';
-    editToggleAuth();
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('editNotifModal')).show();
-}
+function openEditFromBtn(btn) {
+    editId = btn.dataset.id;
+    const cfg = JSON.parse(btn.dataset.config);
+    const kind = btn.dataset.kind;
 
-function editToggleServer() {
-    document.getElementById('edit-custom-server').classList.toggle('d-none', !document.getElementById('edit-srv-custom').checked);
-}
+    // Byt formulärtitel och submitknapp
+    document.getElementById('form-card-title').textContent = 'Redigera notifieringstjänst';
+    document.getElementById('form-submit-btn').textContent = 'Spara ändringar';
+    document.getElementById('edit-mode-banner').classList.remove('d-none');
+    document.getElementById('notif-form').action = `/settings/notifications/${editId}/update`;
 
-function editToggleAuth() {
-    const authType = document.querySelector('input[name="edit_auth_type"]:checked').value;
-    document.getElementById('edit-token-field').classList.toggle('d-none', authType !== 'token');
-    document.getElementById('edit-password-fields').classList.toggle('d-none', authType !== 'password');
-}
+    // Sätt tjänstval och visa fälten
+    const kindSelect = document.getElementById('kind-select');
+    kindSelect.value = kind;
+    kindSelect.disabled = true;
+    onKindChange(kind);
 
-async function saveEdit() {
-    const isCustom = document.getElementById('edit-srv-custom').checked;
-    const server = isCustom ? document.getElementById('edit-field-server').value.trim() : 'https://ntfy.sh';
-    const authType = document.querySelector('input[name="edit_auth_type"]:checked').value;
-    const cfg = { server, topic: document.getElementById('edit-field-topic').value.trim(), auth_type: authType };
-    if (authType === 'token') cfg.token = document.getElementById('edit-field-token').value;
-    if (authType === 'password') {
-        cfg.username = document.getElementById('edit-field-username').value;
-        cfg.password = document.getElementById('edit-field-password').value;
+    // Fyll i ntfy-fälten
+    if (kind === 'ntfy') {
+        const server = cfg.server || 'https://ntfy.sh';
+        const isCustom = server !== 'https://ntfy.sh';
+        document.getElementById('srv-public').checked = !isCustom;
+        document.getElementById('srv-custom').checked = isCustom;
+        document.getElementById('custom-server-field').classList.toggle('d-none', !isCustom);
+        document.getElementById('field-server').value = isCustom ? server : '';
+        document.getElementById('field-topic').value = cfg.topic || cfg.url || '';
+        const authType = cfg.auth_type || 'none';
+        document.querySelector(`input[name="auth_type"][value="${authType}"]`).checked = true;
+        document.getElementById('field-token').value = cfg.token || '';
+        document.getElementById('field-username').value = cfg.username || '';
+        document.getElementById('field-password').value = cfg.password || '';
+        toggleAuthFields();
+        syncFormToJson();
     }
-    const fd = new FormData();
-    fd.append('csrf_token', csrfToken);
-    fd.append('config_json', JSON.stringify(cfg));
-    await fetch(`/settings/notifications/${editTargetId}/update`, { method: 'POST', body: fd });
-    window.location.reload();
+
+    // Scrolla till formuläret
+    document.getElementById('notif-form').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEdit() {
+    editId = null;
+    document.getElementById('form-card-title').textContent = 'Lägg till notifieringstjänst';
+    document.getElementById('form-submit-btn').textContent = 'Lägg till';
+    document.getElementById('edit-mode-banner').classList.add('d-none');
+    document.getElementById('notif-form').action = '/settings/notifications';
+    const kindSelect = document.getElementById('kind-select');
+    kindSelect.value = '';
+    kindSelect.disabled = false;
+    document.getElementById('ntfy-fields').classList.add('d-none');
+    document.getElementById('mode-toggle').classList.add('d-none');
+    document.getElementById('hidden-kind').value = '';
 }
 
 // --- reMarkable mappläsare ---
