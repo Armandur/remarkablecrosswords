@@ -58,11 +58,6 @@
                                 <input class="form-check-input" type="checkbox" id="ks_fetch_competition">
                                 <label class="form-check-label" for="ks_fetch_competition">Tävlingsinfo</label>
                             </div>
-                            <hr class="my-2">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="ks_overwrite">
-                                <label class="form-check-label" for="ks_overwrite">Skriv över befintlig fil på reMarkable vid omsynk</label>
-                            </div>
                         </div>
                         <input type="hidden" id="config_json_hidden">
                     </div>
@@ -126,6 +121,17 @@
                     <div id="other_fields" class="mb-3 d-none">
                         <label class="form-label">Config JSON</label>
                         <textarea id="config_json_textarea" class="form-control font-monospace" style="height: 120px;">{{ source.config_json if source else '{}' }}</textarea>
+                    </div>
+
+                    <!-- Generell reMarkable-synkinställning -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="overwrite" id="overwrite_check"
+                                   value="true" {% if source and source.overwrite %}checked{% endif %}>
+                            <label class="form-check-label" for="overwrite_check">
+                                Skriv över befintlig fil på reMarkable vid omsynk
+                            </label>
+                        </div>
                     </div>
 
                     <div class="d-flex justify-content-between mt-4">
@@ -215,7 +221,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const ksSlug = document.getElementById('ks_slug');
     const ksSms = document.getElementById('ks_sms_boxes');
     const ksComp = document.getElementById('ks_fetch_competition');
-    const ksOverwrite = document.getElementById('ks_overwrite');
 
     const pSite = document.getElementById('prenly_site');
     const pTextalkAuth = document.getElementById('prenly_textalk_auth');
@@ -231,7 +236,6 @@ document.addEventListener('DOMContentLoaded', function() {
         ksSlug.value = _existing.slug || '';
         ksSms.checked = _existing.sms_boxes !== false;
         ksComp.checked = _existing.fetch_competition !== false;
-        ksOverwrite.checked = _existing.overwrite === true;
     } else if (_existing && ['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
         pSite.value = _existing.site || '';
         pTextalkAuth.value = _existing.textalk_auth || '';
@@ -242,10 +246,8 @@ document.addEventListener('DOMContentLoaded', function() {
         pMarker.value = _existing.crossword_marker_text || '';
         pPages.value = _existing.extraction_pages ? _existing.extraction_pages.join(', ') : '';
     } else if (!_existing) {
-        // Defaultvärden för ny källa
         ksSms.checked = true;
         ksComp.checked = true;
-        ksOverwrite.checked = false;
     }
 
     function updateConfigJson() {
@@ -254,7 +256,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 slug: ksSlug.value,
                 sms_boxes: ksSms.checked,
                 fetch_competition: ksComp.checked,
-                overwrite: ksOverwrite.checked
             });
         }
     }
@@ -339,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     kindSelect.addEventListener('change', toggleFields);
     
-    [ksSlug, ksSms, ksComp, ksOverwrite].forEach(el => {
+    [ksSlug, ksSms, ksComp].forEach(el => {
         el.addEventListener('change', updateConfigJson);
         el.addEventListener('input', updateConfigJson);
     });

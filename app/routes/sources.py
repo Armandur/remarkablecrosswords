@@ -28,6 +28,7 @@ async def create_source(
     schedule_cron: str = Form(None),
     prefix: str = Form(None),
     config_json: str = Form("{}"),
+    overwrite: bool = Form(False),
     db: Session = Depends(get_db),
     user=Depends(require_admin),
     _csrf: CsrfProtect = Depends(CsrfProtect())
@@ -38,7 +39,8 @@ async def create_source(
         enabled=enabled,
         schedule_cron=schedule_cron,
         prefix=prefix,
-        config_json=config_json
+        config_json=config_json,
+        overwrite=overwrite,
     )
     db.add(source)
     db.commit()
@@ -62,6 +64,7 @@ async def update_source(
     schedule_cron: str = Form(None),
     prefix: str = Form(None),
     config_json: str = Form("{}"),
+    overwrite: bool = Form(False),
     db: Session = Depends(get_db),
     user=Depends(require_admin),
     _csrf: CsrfProtect = Depends(CsrfProtect())
@@ -73,6 +76,7 @@ async def update_source(
         source.schedule_cron = schedule_cron
         source.prefix = prefix
         source.config_json = config_json
+        source.overwrite = overwrite
         db.commit()
     return RedirectResponse(url=f"/sources/{source_id}", status_code=303)
 

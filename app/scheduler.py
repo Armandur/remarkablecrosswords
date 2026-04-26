@@ -37,8 +37,7 @@ def sync_pending(db: Session):
     for cw in crosswords:
         issue = db.query(Issue).filter(Issue.id == cw.issue_id).first()
         source = db.query(Source).filter(Source.id == issue.source_id).first()
-        source_config = json.loads(source.config_json or "{}")
-        overwrite = source_config.get("overwrite", False)
+        overwrite = source.overwrite
 
         remote_folder = _get_remote_folder(db, source)
         job = Job(kind='sync', state='running', source_id=source.id, issue_id=issue.id)
@@ -80,8 +79,7 @@ def sync_single_crossword(db: Session, crossword_id: int):
 
     issue = db.query(Issue).filter(Issue.id == cw.issue_id).first()
     source = db.query(Source).filter(Source.id == issue.source_id).first()
-    source_config = json.loads(source.config_json or "{}")
-    overwrite = source_config.get("overwrite", False)
+    overwrite = source.overwrite
 
     remote_folder = _get_remote_folder(db, source)
     job = Job(kind='sync', state='running', source_id=source.id, issue_id=issue.id)
@@ -138,8 +136,7 @@ def run_sync_job(crossword_id: int, job_id: int):
 
         issue = db.query(Issue).filter(Issue.id == cw.issue_id).first()
         source = db.query(Source).filter(Source.id == issue.source_id).first()
-        source_config = json.loads(source.config_json or "{}")
-        overwrite = source_config.get("overwrite", False)
+        overwrite = source.overwrite
 
         remote_folder = _get_remote_folder(db, source)
         log_lines = [f"Korsord: {issue.name}", f"Mapp: {remote_folder}"]

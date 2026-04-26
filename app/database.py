@@ -42,6 +42,7 @@ class Source(Base):
     schedule_cron = Column(String, nullable=True)
     prefix = Column(String, nullable=True)  # reMarkable-mapp under REMARKABLE_FOLDER
     config_json = Column(Text, default="{}")
+    overwrite = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Issue(Base):
@@ -114,7 +115,12 @@ def init_db():
 
     inspector = inspect(engine)
     nt_cols = [c["name"] for c in inspector.get_columns("notification_targets")]
+    src_cols = [c["name"] for c in inspector.get_columns("sources")]
     with engine.connect() as conn:
         if "events_json" not in nt_cols:
             conn.execute(text("ALTER TABLE notification_targets ADD COLUMN events_json TEXT DEFAULT '[\"all\"]'"))
+            conn.commit()
+        if "overwrite" not in src_cols:
+            conn.execute(text("ALTER TABLE sources ADD COLUMN overwrite BOOLEAN DEFAULT 0"))
+            conn.execute(text("UPDATE sources SET overwrite = 1 WHERE json_extract(config_json, '$.overwrite') = 1"))
             conn.commit()
