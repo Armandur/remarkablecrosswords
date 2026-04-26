@@ -145,7 +145,6 @@
                                     <div class="btn-group btn-group-sm">
                                         <button id="test-btn-{{ t.id }}" type="button" class="btn btn-outline-info"
                                                 onclick="testNotifier({{ t.id }})">Testa</button>
-                                        <div id="test-result-{{ t.id }}" class="mt-1 d-none small"></div>
                                         <button type="button" class="btn btn-outline-secondary"
                                                 data-id="{{ t.id }}"
                                                 data-config='{{ t.config | tojson }}'
@@ -321,40 +320,34 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const NOTIF_EVENTS = {{ notification_events | tojson }};
 
 // --- Testknapp ---
 async function testNotifier(id) {
     const btn = document.getElementById(`test-btn-${id}`);
-    const resDiv = document.getElementById(`test-result-${id}`);
     const origText = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Testar...';
-    resDiv.classList.add('d-none');
-    resDiv.innerHTML = '';
-
     const csrfToken = document.getElementById('csrf-token').dataset.token;
     const fd = new FormData();
     fd.append('csrf_token', csrfToken);
     try {
         const r = await fetch(`/settings/notifications/${id}/test`, { method: 'POST', body: fd });
         const data = await r.json();
-        if (data.ok) {
-            btn.textContent = 'Skickad!';
-            btn.classList.replace('btn-outline-info', 'btn-success');
-            if (data.results) {
-                resDiv.innerHTML = Object.entries(data.results).map(([key, ok]) => {
-                    const label = NOTIF_EVENTS[key] || key;
-                    const badgeClass = ok ? 'bg-success' : 'bg-danger';
-                    const icon = ok ? '✓' : '✗';
-                    return `<div class="mb-1"><span class="badge ${badgeClass}">${label} ${icon}</span></div>`;
-                }).join('');
-                resDiv.classList.remove('d-none');
-            }
-        } else {
+        if (data.error) {
             btn.textContent = 'Fel';
-            btn.title = data.error || '';
+            btn.title = data.error;
             btn.classList.replace('btn-outline-info', 'btn-danger');
+        } else if (data.results) {
+            const vals = Object.values(data.results);
+            const ok = vals.filter(Boolean).length;
+            const total = vals.length;
+            if (ok === total) {
+                btn.textContent = `${ok}/${total} lyckades`;
+                btn.classList.replace('btn-outline-info', 'btn-success');
+            } else {
+                btn.textContent = `${total - ok} av ${total} misslyckades`;
+                btn.classList.replace('btn-outline-info', 'btn-danger');
+            }
         }
     } catch(e) {
         btn.textContent = 'Nätverksfel';
@@ -367,7 +360,6 @@ async function testNotifier(id) {
             .replace('btn-success', 'btn-outline-info')
             .replace('btn-danger', 'btn-outline-info')
             .replace('btn-warning', 'btn-outline-info');
-        resDiv.classList.add('d-none');
     }, 5000);
 }
 
