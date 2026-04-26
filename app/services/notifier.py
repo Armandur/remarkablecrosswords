@@ -17,6 +17,25 @@ NOTIFICATION_EVENTS = {
     "sync_fail": "Synk misslyckad",
 }
 
+TEST_MESSAGES = {
+    "download_ok": {
+        "title": "Nedladdning lyckad",
+        "message": "[TEST] Testblad v.17 (2026-04-26) har laddats ned.",
+    },
+    "download_fail": {
+        "title": "Nedladdning misslyckades",
+        "message": "[TEST] Kunde inte ladda ned Testblad v.17.",
+    },
+    "sync_ok": {
+        "title": "Synk lyckad",
+        "message": "[TEST] Testblad v.17 har synkats till reMarkable.",
+    },
+    "sync_fail": {
+        "title": "Synk misslyckades",
+        "message": "[TEST] Kunde inte synka Testblad v.17 till reMarkable.",
+    },
+}
+
 class Notifier(Protocol):
     def send(self, title: str, message: str, click_url: str | None = None) -> bool:
         ...

@@ -7,7 +7,7 @@ from app.database import NotificationTarget, get_db, get_setting, set_setting
 from app.deps import templates, require_admin, get_current_user
 from app.config import REMARKABLE_CLIENT, REMARKABLE_FOLDER, DEFAULT_TIMEZONE
 from app.services.remarkable import is_rmapi_authenticated, register_remarkable
-from app.services.notifier import build_notifier, NOTIFICATION_EVENTS
+from app.services.notifier import build_notifier, NOTIFICATION_EVENTS, TEST_MESSAGES
 from app.csrf import CsrfProtect
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -110,8 +110,10 @@ async def test_notification_target(
     notifier = build_notifier(target)
     if not notifier:
         return JSONResponse({"ok": False, "error": f"Okänd typ: {target.kind}"})
-    ok = notifier.send("Test – reMarkable Crosswords", "Det här är ett testmeddelande från reMarkable Crosswords.")
-    return JSONResponse({"ok": ok})
+    results = {}
+    for event_key, msg in TEST_MESSAGES.items():
+        results[event_key] = notifier.send(msg["title"], msg["message"])
+    return JSONResponse({"ok": all(results.values()), "results": results})
 
 @router.post("/notifications/{target_id}/events")
 async def update_notification_events(
