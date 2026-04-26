@@ -57,7 +57,7 @@
                         <td class="align-middle fw-bold">{{ issue.name }}</td>
                         <td class="align-middle">{{ source.name }}</td>
                         <td class="align-middle text-muted small">
-                            {{ cw.created_at.strftime('%Y-%m-%d %H:%M') if cw.created_at else '-' }}
+                            {{ issue.published_at.strftime('%Y-%m-%d') if issue.published_at else '-' }}
                         </td>
                         <td class="align-middle" id="sync-status-{{ cw.id }}">
                             {% if cw.synced_at %}
@@ -87,6 +87,22 @@
         </div>
     </div>
 </div>
+
+{% if total > limit %}
+<nav aria-label="Korsordspaginering" class="mt-3">
+  <ul class="pagination justify-content-center">
+    <li class="page-item {% if offset == 0 %}disabled{% endif %}">
+      <a class="page-link" href="/crosswords?{{ base_params }}&offset={{ [0, offset - limit]|max }}">Föregående</a>
+    </li>
+    <li class="page-item disabled">
+      <span class="page-link text-dark">{{ offset + 1 }}–{{ [offset + limit, total]|min }} av {{ total }}</span>
+    </li>
+    <li class="page-item {% if offset + limit >= total %}disabled{% endif %}">
+      <a class="page-link" href="/crosswords?{{ base_params }}&offset={{ offset + limit }}">Nästa</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
 <script>
 async function syncCrossword(id, btn) {
     const statusEl = document.getElementById(`sync-status-${id}`);

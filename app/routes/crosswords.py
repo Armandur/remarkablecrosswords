@@ -14,26 +14,28 @@ router = APIRouter(prefix="/crosswords", tags=["crosswords"])
 
 @router.get("/")
 async def list_crosswords(
-    request: Request, 
-    db: Session = Depends(get_db), 
+    request: Request,
+    db: Session = Depends(get_db),
     user=Depends(get_current_user),
     source_id: Optional[int] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
-    synced: Optional[str] = None
+    synced: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 20,
 ):
     query = db.query(Crossword, Issue, Source).join(Issue, Crossword.issue_id == Issue.id).join(Source, Issue.source_id == Source.id)
 
     if source_id:
         query = query.filter(Source.id == source_id)
-    
+
     if from_date:
         try:
             dt_from = datetime.strptime(from_date, "%Y-%m-%d")
             query = query.filter(Issue.published_at >= dt_from)
         except ValueError:
             pass
-            
+
     if to_date:
         try:
             dt_to = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
@@ -46,16 +48,22 @@ async def list_crosswords(
     elif synced == 'no':
         query = query.filter(Crossword.synced_at.is_(None))
 
-    crosswords = query.order_by(Issue.published_at.desc(), Crossword.id.desc()).all()
+    total = query.count()
+    crosswords = query.order_by(Issue.published_at.desc(), Crossword.id.desc()).offset(offset).limit(limit).all()
     sources = db.query(Source).order_by(Source.name).all()
 
+    import urllib.parse
+    base_params = urllib.parse.urlencode({k: v for k, v in {
+        "source_id": source_id or "", "from_date": from_date or "",
+        "to_date": to_date or "", "synced": synced or "", "limit": limit,
+    }.items() if v != ""})
+
     return templates.TemplateResponse(request, "crosswords/list.html", {
-        "crosswords": crosswords,
-        "sources": sources,
-        "source_id": source_id,
-        "from_date": from_date,
-        "to_date": to_date,
-        "synced": synced
+        "crosswords": crosswords, "sources": sources,
+        "source_id": source_id, "from_date": from_date,
+        "to_date": to_date, "synced": synced,
+        "offset": offset, "limit": limit, "total": total,
+        "base_params": base_params,
     })
 
 @router.post("/{crossword_id}/sync")
