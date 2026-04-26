@@ -55,6 +55,28 @@
         </div>
     </div>
 
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h2 class="h5 mb-0">Tidszon</h2>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">Nuvarande: <strong>{{ timezone }}</strong></p>
+                <form action="/settings/timezone" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="input-group mb-2">
+                        <input type="text" name="timezone" class="form-control form-control-sm"
+                               placeholder="t.ex. Europe/Stockholm" value="{{ timezone }}" required>
+                        <button type="submit" class="btn btn-sm btn-primary">Spara</button>
+                    </div>
+                </form>
+                <p class="small text-muted mb-0">
+                    Använd IANA-format (t.ex. <code>Europe/Stockholm</code>, <code>UTC</code>, <code>America/New_York</code>).
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div class="col-md-12 mb-4">
         <div class="card shadow-sm">
             <div class="card-header bg-white">
