@@ -1,9 +1,10 @@
 import json
+import os
 from fastapi import APIRouter, Depends, Request, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.database import Source, get_db
+from app.database import Source, Issue, Crossword, get_db
 from app.deps import templates, require_admin, get_current_user
 from app.scheduler import run_pipeline_for_source, rerender_issues_for_source
 from app.csrf import CsrfProtect
@@ -91,6 +92,29 @@ async def toggle_source(source_id: int, db: Session = Depends(get_db), user=Depe
     if source:
         source.enabled = not source.enabled
         db.commit()
+    return RedirectResponse(url=f"/sources/{source_id}", status_code=303)
+
+@router.post("/{source_id}/clear-cache")
+async def clear_source_cache(source_id: int, db: Session = Depends(get_db), user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
+    issues = db.query(Issue).filter(Issue.source_id == source_id).all()
+    for issue in issues:
+        crosswords = db.query(Crossword).filter(Crossword.issue_id == issue.id).all()
+        for cw in crosswords:
+            if cw.pdf_path:
+                try:
+                    os.remove(cw.pdf_path)
+                except (FileNotFoundError, OSError):
+                    pass
+            db.delete(cw)
+        if issue.pdf_path:
+            try:
+                os.remove(issue.pdf_path)
+            except (FileNotFoundError, OSError):
+                pass
+        issue.state = 'pending'
+        issue.pdf_path = None
+        issue.downloaded_at = None
+    db.commit()
     return RedirectResponse(url=f"/sources/{source_id}", status_code=303)
 
 @router.post("/{source_id}/delete")

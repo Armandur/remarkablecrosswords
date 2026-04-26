@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -126,6 +127,20 @@ async def crosswords_page(
             for cw, issue, source in rows
         ],
     })
+
+@router.post("/{crossword_id}/delete")
+async def delete_crossword(crossword_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    cw = db.query(Crossword).filter(Crossword.id == crossword_id).first()
+    if not cw:
+        return JSONResponse({"ok": False}, status_code=404)
+    if cw.pdf_path:
+        try:
+            os.remove(cw.pdf_path)
+        except (FileNotFoundError, OSError):
+            pass
+    db.delete(cw)
+    db.commit()
+    return JSONResponse({"ok": True})
 
 @router.get("/{crossword_id}/view")
 async def view_crossword(crossword_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):

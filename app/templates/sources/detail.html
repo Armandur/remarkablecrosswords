@@ -31,19 +31,19 @@
                     <div class="col-sm-4 text-muted">Undermapp på reMarkable</div>
                     <div class="col-sm-8">{{ source.prefix or '-' }}</div>
                 </div>
-                
+
                 <hr>
-                
+
                 <h5 class="card-title">Konfiguration</h5>
                 <pre class="bg-light p-3 border rounded" id="configJsonDisplay">{{ source.config_json }}</pre>
             </div>
-            <div class="card-footer bg-white d-flex gap-2">
+            <div class="card-footer bg-white d-flex gap-2 flex-wrap">
                 <form action="/sources/{{ source.id }}/run" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn-primary">Kör nu</button>
                 </form>
 
-                <form action="/sources/{{ source.id }}/rerender" method="POST" onsubmit="return confirm('Rendera om alla korsord för denna källa? De kommer att synkas om till reMarkable.')">
+                <form action="/sources/{{ source.id }}/rerender" method="POST" onsubmit="return confirm('Rendera om alla korsord för denna källa?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn-outline-warning">Rendera om</button>
                 </form>
@@ -68,6 +68,35 @@
     </div>
 </div>
 
+<div class="card shadow-sm mb-2 overflow-hidden">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Nedladdade korsord</h5>
+        <form action="/sources/{{ source.id }}/clear-cache" method="POST"
+              onsubmit="return confirm('Ta bort alla lokala filer och återställ hämtningsstatus för denna källa?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Rensa cache</button>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Namn</th>
+                        <th>Datum</th>
+                        <th>Synkstatus</th>
+                        <th class="text-end">Åtgärder</th>
+                    </tr>
+                </thead>
+                <tbody id="cw-tbody">
+                    <tr><td colspan="4" class="text-center text-muted py-4">Laddar...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div id="cw-pagination" class="mt-2 mb-4"></div>
+
 <script>
 function confirmDelete() {
     if (confirm('Är du säker på att du vill ta bort denna källa?')) {
@@ -80,9 +109,128 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
         const obj = JSON.parse(el.textContent);
         el.textContent = JSON.stringify(obj, null, 2);
-    } catch (e) {
-        // Not valid JSON or already formatted
-    }
+    } catch (e) {}
 });
+
+// --- Korsordstabell ---
+(function() {
+    const SOURCE_ID = {{ source.id }};
+    let offset = 0;
+    let limit = 20;
+    let total = 0;
+    const tbody = document.getElementById('cw-tbody');
+    const paginEl = document.getElementById('cw-pagination');
+
+    function calcLimit() {
+        const top = tbody.getBoundingClientRect().top;
+        return Math.max(5, Math.floor((window.innerHeight - top - 80) / 47));
+    }
+
+    function renderPagination() {
+        if (total <= limit) { paginEl.innerHTML = ''; return; }
+        const from = offset + 1, to = Math.min(offset + limit, total);
+        const prevOff = Math.max(0, offset - limit);
+        const nextOff = offset + limit;
+        paginEl.innerHTML = `<nav><ul class="pagination justify-content-center mb-0">
+            <li class="page-item ${offset === 0 ? 'disabled' : ''}">
+                <button class="page-link" onclick="cwGoTo(${prevOff})" ${offset === 0 ? 'disabled' : ''}>Föregående</button>
+            </li>
+            <li class="page-item disabled"><span class="page-link text-dark">${from}–${to} av ${total}</span></li>
+            <li class="page-item ${nextOff >= total ? 'disabled' : ''}">
+                <button class="page-link" onclick="cwGoTo(${nextOff})" ${nextOff >= total ? 'disabled' : ''}>Nästa</button>
+            </li>
+        </ul></nav>`;
+    }
+
+    async function load() {
+        const newLimit = calcLimit();
+        if (newLimit !== limit) { limit = newLimit; offset = 0; }
+        try {
+            const r = await fetch(`/crosswords/page?source_id=${SOURCE_ID}&offset=${offset}&limit=${limit}`);
+            if (!r.ok) return;
+            const data = await r.json();
+            total = data.total;
+            tbody.innerHTML = data.crosswords.length === 0
+                ? '<tr><td colspan="4" class="text-center text-muted py-4">Inga korsord nedladdade</td></tr>'
+                : data.crosswords.map(cw => {
+                    const date = cw.published_at ? new Date(cw.published_at).toLocaleDateString('sv-SE') : '-';
+                    const syncEl = cw.synced_at
+                        ? `<span class="badge bg-success" id="sync-status-${cw.id}" title="${new Date(cw.synced_at).toLocaleString('sv-SE')}">Synkad</span>`
+                        : `<span class="badge bg-warning text-dark" id="sync-status-${cw.id}">Väntar</span>`;
+                    const viewBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/view" target="_blank" class="btn btn-sm btn-outline-primary">Visa</a>` : '';
+                    const dlBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/download" class="btn btn-sm btn-outline-secondary">Ladda ned</a>` : '';
+                    return `<tr id="cw-row-${cw.id}">
+                        <td class="align-middle fw-bold">${cw.name}</td>
+                        <td class="align-middle text-muted small">${date}</td>
+                        <td class="align-middle">${syncEl}</td>
+                        <td class="text-end align-middle">
+                            <div class="btn-group btn-group-sm">
+                                ${viewBtn}${dlBtn}
+                                <button type="button" class="btn btn-outline-success" onclick="syncCw(${cw.id}, this)">Synka</button>
+                                <button type="button" class="btn btn-outline-danger" onclick="deleteCw(${cw.id}, this)">Ta bort</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+            renderPagination();
+        } catch(e) {}
+    }
+
+    window.cwGoTo = function(off) { offset = off; load(); };
+
+    let resizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(load, 200);
+    });
+
+    window.syncCw = async function(id, btn) {
+        const statusEl = document.getElementById(`sync-status-${id}`);
+        if (btn) btn.disabled = true;
+        statusEl.innerHTML = '<span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1"></span>Synkar...</span>';
+        let data;
+        try {
+            const r = await fetch(`/crosswords/${id}/sync`, { method: 'POST' });
+            data = await r.json();
+        } catch(e) {
+            statusEl.innerHTML = '<span class="badge bg-danger">Nätverksfel</span>';
+            if (btn) btn.disabled = false;
+            return;
+        }
+        const jobId = data.job_id;
+        statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-warning text-dark text-decoration-none">Jobb ${jobId}…</a>`;
+        const poll = setInterval(async () => {
+            try {
+                const r = await fetch(`/jobs/${jobId}/status`);
+                const s = await r.json();
+                if (s.state === 'done') {
+                    clearInterval(poll);
+                    statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-success text-decoration-none text-white">Synkad</a>`;
+                    if (btn) btn.disabled = false;
+                } else if (s.state === 'failed') {
+                    clearInterval(poll);
+                    statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-danger text-decoration-none text-white">Misslyckades</a>`;
+                    if (btn) btn.disabled = false;
+                }
+            } catch(e) { clearInterval(poll); if (btn) btn.disabled = false; }
+        }, 1500);
+    };
+
+    window.deleteCw = async function(id, btn) {
+        if (!confirm('Ta bort detta korsord?')) return;
+        if (btn) btn.disabled = true;
+        try {
+            const r = await fetch(`/crosswords/${id}/delete`, { method: 'POST' });
+            if (r.ok) {
+                document.getElementById(`cw-row-${id}`)?.remove();
+                total--;
+                if (total === 0 || tbody.querySelectorAll('tr').length === 0) load();
+                else renderPagination();
+            }
+        } catch(e) { if (btn) btn.disabled = false; }
+    };
+
+    load();
+})();
 </script>
 {% endblock %}
