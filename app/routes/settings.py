@@ -71,6 +71,21 @@ async def add_notification_target(
     db.commit()
     return RedirectResponse(url="/settings", status_code=303)
 
+@router.post("/notifications/{target_id}/update")
+async def update_notification_target(
+    target_id: int,
+    config_json: str = Form("{}"),
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+    _csrf: CsrfProtect = Depends(CsrfProtect())
+):
+    target = db.query(NotificationTarget).filter(NotificationTarget.id == target_id).first()
+    if not target:
+        return JSONResponse({"ok": False}, status_code=404)
+    target.config_json = config_json
+    db.commit()
+    return JSONResponse({"ok": True})
+
 @router.post("/notifications/{target_id}/test")
 async def test_notification_target(
     target_id: int,
@@ -86,6 +101,21 @@ async def test_notification_target(
         return JSONResponse({"ok": False, "error": f"Okänd typ: {target.kind}"})
     ok = notifier.send("Test – reMarkable Crosswords", "Det här är ett testmeddelande från reMarkable Crosswords.")
     return JSONResponse({"ok": ok})
+
+@router.post("/notifications/{target_id}/events")
+async def update_notification_events(
+    target_id: int,
+    events_json: str = Form('["all"]'),
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+    _csrf: CsrfProtect = Depends(CsrfProtect())
+):
+    target = db.query(NotificationTarget).filter(NotificationTarget.id == target_id).first()
+    if not target:
+        return JSONResponse({"ok": False}, status_code=404)
+    target.events_json = events_json
+    db.commit()
+    return JSONResponse({"ok": True})
 
 @router.post("/notifications/{target_id}/delete")
 async def delete_notification_target(target_id: int, db: Session = Depends(get_db), user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):

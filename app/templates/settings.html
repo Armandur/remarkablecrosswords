@@ -58,69 +58,78 @@
     <div class="col-md-12 mb-4">
         <div class="card shadow-sm">
             <div class="card-header bg-white">
-                <h2 class="h5 mb-0">Notifieringar</h2>
+                <h2 class="h5 mb-0">Konfigurerade notifieringar</h2>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th>Typ</th>
-                                <th>Server / Ämne</th>
+                                <th>Tjänst</th>
+                                <th>Konfiguration</th>
                                 <th>Auth</th>
-                                <th>Händelser</th>
+                                <th class="text-center small fw-normal text-muted">Alla</th>
+                                {% for ev_key, ev_label in notification_events.items() %}
+                                <th class="text-center small fw-normal text-muted">{{ ev_label }}</th>
+                                {% endfor %}
                                 <th>Status</th>
                                 <th class="text-end">Åtgärder</th>
                             </tr>
                         </thead>
                         <tbody>
                         {% for t in targets %}
+                            {% set is_all = 'all' in t.events %}
                             <tr>
-                                <td class="align-middle fw-bold">{{ t.kind }}</td>
-                                <td class="align-middle small">
+                                <td class="fw-bold">{{ t.kind }}</td>
+                                <td class="small">
                                     {% if t.kind == 'ntfy' %}
                                         {% if t.config.get('topic') %}
                                             <code>{{ t.config.get('server', 'https://ntfy.sh') }}/{{ t.config.get('topic') }}</code>
                                         {% elif t.config.get('url') %}
                                             <code>{{ t.config.get('url') }}</code>
-                                        {% else %}
-                                            <span class="text-muted">–</span>
-                                        {% endif %}
+                                        {% else %}<span class="text-muted">–</span>{% endif %}
                                     {% else %}
-                                        <code class="text-muted small">{{ t.config }}</code>
+                                        <code class="text-muted">{{ t.config }}</code>
                                     {% endif %}
                                 </td>
-                                <td class="align-middle small text-muted">
+                                <td class="small text-muted">
                                     {% if t.config.get('auth_type') == 'token' %}Token
                                     {% elif t.config.get('auth_type') == 'password' %}Lösenord
-                                    {% else %}Ingen
-                                    {% endif %}
+                                    {% else %}Ingen{% endif %}
                                 </td>
-                                <td class="align-middle small">
-                                    {% if 'all' in t.events %}
-                                        <span class="badge bg-secondary">Alla</span>
-                                    {% else %}
-                                        {% for ev in t.events %}
-                                            <span class="badge bg-light text-dark border">{{ notification_events.get(ev, ev) }}</span>
-                                        {% endfor %}
-                                    {% endif %}
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input"
+                                           id="ev-all-{{ t.id }}"
+                                           {% if is_all %}checked{% endif %}
+                                           onchange="onAllChange({{ t.id }}, this)">
                                 </td>
-                                <td class="align-middle">
+                                {% for ev_key in notification_events %}
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input ev-cb-{{ t.id }}"
+                                           data-event="{{ ev_key }}"
+                                           {% if is_all or ev_key in t.events %}checked{% endif %}
+                                           {% if is_all %}disabled{% endif %}
+                                           onchange="onEventChange({{ t.id }})">
+                                </td>
+                                {% endfor %}
+                                <td>
                                     {% if t.enabled %}
                                         <span class="badge bg-success">Aktiv</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Inaktiv</span>
                                     {% endif %}
                                 </td>
-                                <td class="text-end align-middle">
+                                <td class="text-end">
                                     <div class="btn-group btn-group-sm">
                                         <button id="test-btn-{{ t.id }}" type="button" class="btn btn-outline-info"
                                                 onclick="testNotifier({{ t.id }})">Testa</button>
+                                        <button type="button" class="btn btn-outline-secondary"
+                                                onclick="openEdit({{ t.id }}, {{ t.config | tojson }})">Redigera</button>
                                         <form action="/settings/notifications/{{ t.id }}/toggle" method="POST" class="d-inline">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <button type="submit" class="btn btn-sm btn-outline-secondary">Växla</button>
                                         </form>
-                                        <form action="/settings/notifications/{{ t.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Ta bort notifieringsmål?')">
+                                        <form action="/settings/notifications/{{ t.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Ta bort?')">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <button type="submit" class="btn btn-sm btn-outline-danger">Ta bort</button>
                                         </form>
@@ -130,7 +139,7 @@
                         {% endfor %}
                         {% if not targets %}
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-4">Inga notifieringar konfigurerade</td>
+                                <td colspan="{{ 4 + notification_events|length + 2 }}" class="text-center text-muted py-4">Inga notifieringar konfigurerade</td>
                             </tr>
                         {% endif %}
                         </tbody>
@@ -144,103 +153,179 @@
         <div class="card shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Lägg till notifiering</h5>
-                <div class="btn-group btn-group-sm" role="group">
+                <div id="mode-toggle" class="btn-group btn-group-sm d-none" role="group">
                     <button type="button" id="mode-form-btn" class="btn btn-primary" onclick="setMode('form')">Formulär</button>
                     <button type="button" id="mode-json-btn" class="btn btn-outline-secondary" onclick="setMode('json')">JSON</button>
                 </div>
             </div>
             <div class="card-body">
-                <form action="/settings/notifications" method="POST" id="ntfy-form" onsubmit="formSubmit(event)">
+                <form action="/settings/notifications" method="POST" id="notif-form" onsubmit="formSubmit(event)">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="kind" value="ntfy">
+                    <input type="hidden" name="kind" id="hidden-kind" value="">
                     <input type="hidden" name="config_json" id="hidden-config-json" value="{}">
                     <input type="hidden" name="events_json" id="hidden-events-json" value='["all"]'>
 
-                    <!-- Formulärläge -->
-                    <div id="form-mode">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Server</label>
-                            <div class="mb-2">
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="server_type" id="srv-public" value="public" checked onchange="toggleServerField()">
-                                    <label class="form-check-label" for="srv-public">ntfy.sh (publik)</label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="server_type" id="srv-custom" value="custom" onchange="toggleServerField()">
-                                    <label class="form-check-label" for="srv-custom">Anpassad</label>
-                                </div>
-                            </div>
-                            <div id="custom-server-field" class="d-none">
-                                <input type="url" id="field-server" class="form-control form-control-sm" placeholder="https://din-server.example.com" oninput="syncFormToJson()">
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="field-topic" class="form-label fw-bold">Ämne (topic)</label>
-                            <input type="text" id="field-topic" class="form-control form-control-sm" placeholder="mitt-korsord-ämne" oninput="syncFormToJson()">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Autentisering</label>
-                            <div class="mb-2">
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="auth_type" id="auth-none" value="none" checked onchange="toggleAuthFields()">
-                                    <label class="form-check-label" for="auth-none">Ingen</label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="auth_type" id="auth-token" value="token" onchange="toggleAuthFields()">
-                                    <label class="form-check-label" for="auth-token">Token</label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="auth_type" id="auth-password" value="password" onchange="toggleAuthFields()">
-                                    <label class="form-check-label" for="auth-password">Lösenord</label>
-                                </div>
-                            </div>
-                            <div id="auth-token-field" class="d-none">
-                                <input type="text" id="field-token" class="form-control form-control-sm font-monospace" placeholder="tk_..." oninput="syncFormToJson()">
-                            </div>
-                            <div id="auth-password-fields" class="d-none">
-                                <div class="row g-2">
-                                    <div class="col">
-                                        <input type="text" id="field-username" class="form-control form-control-sm" placeholder="Användarnamn" oninput="syncFormToJson()">
-                                    </div>
-                                    <div class="col">
-                                        <input type="password" id="field-password" class="form-control form-control-sm" placeholder="Lösenord" oninput="syncFormToJson()">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Händelser</label>
-                            <div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="ev-all" value="all" checked onchange="toggleAllEvents(this)">
-                                    <label class="form-check-label" for="ev-all">Alla</label>
-                                </div>
-                                {% for ev_key, ev_label in notification_events.items() %}
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input event-cb" type="checkbox" id="ev-{{ ev_key }}" value="{{ ev_key }}" onchange="syncEventsToJson()">
-                                    <label class="form-check-label" for="ev-{{ ev_key }}">{{ ev_label }}</label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
+                    <div class="mb-3">
+                        <label for="kind-select" class="form-label fw-bold">Tjänst</label>
+                        <select id="kind-select" class="form-select" onchange="onKindChange(this.value)">
+                            <option value="">Välj tjänst...</option>
+                            <option value="ntfy">ntfy</option>
+                        </select>
                     </div>
 
-                    <!-- JSON-läge -->
-                    <div id="json-mode" class="d-none">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">config_json</label>
-                            <textarea id="json-config" class="form-control font-monospace" rows="8" oninput="syncJsonToForm()" placeholder='{"server": "https://ntfy.sh", "topic": "mitt-ämne", "auth_type": "none"}'></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">events_json</label>
-                            <textarea id="json-events" class="form-control font-monospace" rows="2" oninput="syncJsonEventsToHidden()" placeholder='["all"]'></textarea>
-                        </div>
-                    </div>
+                    <!-- ntfy-specifika fält -->
+                    <div id="ntfy-fields" class="d-none">
 
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">Lägg till</button>
+                        <!-- Formulärläge -->
+                        <div id="form-mode">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Server</label>
+                                <div class="mb-2">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="server_type" id="srv-public" value="public" checked onchange="toggleServerField()">
+                                        <label class="form-check-label" for="srv-public">ntfy.sh (publik)</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="server_type" id="srv-custom" value="custom" onchange="toggleServerField()">
+                                        <label class="form-check-label" for="srv-custom">Anpassad</label>
+                                    </div>
+                                </div>
+                                <div id="custom-server-field" class="d-none">
+                                    <input type="url" id="field-server" class="form-control form-control-sm" placeholder="https://din-server.example.com" oninput="syncFormToJson()">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="field-topic" class="form-label fw-bold">Ämne (topic)</label>
+                                <input type="text" id="field-topic" class="form-control form-control-sm" placeholder="mitt-korsord-ämne" oninput="syncFormToJson()">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Autentisering</label>
+                                <div class="mb-2">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="auth_type" id="auth-none" value="none" checked onchange="toggleAuthFields()">
+                                        <label class="form-check-label" for="auth-none">Ingen</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="auth_type" id="auth-token" value="token" onchange="toggleAuthFields()">
+                                        <label class="form-check-label" for="auth-token">Token</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="auth_type" id="auth-password" value="password" onchange="toggleAuthFields()">
+                                        <label class="form-check-label" for="auth-password">Lösenord</label>
+                                    </div>
+                                </div>
+                                <div id="auth-token-field" class="d-none">
+                                    <input type="text" id="field-token" class="form-control form-control-sm font-monospace" placeholder="tk_..." oninput="syncFormToJson()">
+                                </div>
+                                <div id="auth-password-fields" class="d-none">
+                                    <div class="row g-2">
+                                        <div class="col">
+                                            <input type="text" id="field-username" class="form-control form-control-sm" placeholder="Användarnamn" oninput="syncFormToJson()">
+                                        </div>
+                                        <div class="col">
+                                            <input type="password" id="field-password" class="form-control form-control-sm" placeholder="Lösenord" oninput="syncFormToJson()">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Händelser</label>
+                                <div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" id="ev-all-new" value="all" checked onchange="toggleAllEventsNew(this)">
+                                        <label class="form-check-label" for="ev-all-new">Alla</label>
+                                    </div>
+                                    {% for ev_key, ev_label in notification_events.items() %}
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input event-cb-new" type="checkbox" id="ev-new-{{ ev_key }}" value="{{ ev_key }}" disabled onchange="syncEventsToJson()">
+                                        <label class="form-check-label" for="ev-new-{{ ev_key }}">{{ ev_label }}</label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- JSON-läge -->
+                        <div id="json-mode" class="d-none">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">config_json</label>
+                                <textarea id="json-config" class="form-control font-monospace" rows="7" oninput="syncJsonToForm()" placeholder='{"server": "https://ntfy.sh", "topic": "mitt-ämne", "auth_type": "none"}'></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">events_json</label>
+                                <textarea id="json-events" class="form-control font-monospace" rows="2" oninput="syncJsonEventsToHidden()" placeholder='["all"]'></textarea>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Lägg till</button>
+                        </div>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Redigera notifiering -->
+<div class="modal fade" id="editNotifModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Redigera notifiering</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Server</label>
+                    <div class="mb-2">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="edit_server_type" id="edit-srv-public" value="public" checked onchange="editToggleServer()">
+                            <label class="form-check-label" for="edit-srv-public">ntfy.sh (publik)</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="edit_server_type" id="edit-srv-custom" value="custom" onchange="editToggleServer()">
+                            <label class="form-check-label" for="edit-srv-custom">Anpassad</label>
+                        </div>
+                    </div>
+                    <div id="edit-custom-server" class="d-none">
+                        <input type="url" id="edit-field-server" class="form-control form-control-sm" placeholder="https://din-server.example.com">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Ämne (topic)</label>
+                    <input type="text" id="edit-field-topic" class="form-control form-control-sm" placeholder="mitt-korsord-ämne">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Autentisering</label>
+                    <div class="mb-2">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="edit_auth_type" id="edit-auth-none" value="none" checked onchange="editToggleAuth()">
+                            <label class="form-check-label" for="edit-auth-none">Ingen</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="edit_auth_type" id="edit-auth-token" value="token" onchange="editToggleAuth()">
+                            <label class="form-check-label" for="edit-auth-token">Token</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="edit_auth_type" id="edit-auth-password" value="password" onchange="editToggleAuth()">
+                            <label class="form-check-label" for="edit-auth-password">Lösenord</label>
+                        </div>
+                    </div>
+                    <div id="edit-token-field" class="d-none">
+                        <input type="text" id="edit-field-token" class="form-control form-control-sm font-monospace" placeholder="tk_...">
+                    </div>
+                    <div id="edit-password-fields" class="d-none">
+                        <div class="row g-2">
+                            <div class="col"><input type="text" id="edit-field-username" class="form-control form-control-sm" placeholder="Användarnamn"></div>
+                            <div class="col"><input type="password" id="edit-field-password" class="form-control form-control-sm" placeholder="Lösenord"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Avbryt</button>
+                <button type="button" class="btn btn-primary" onclick="saveEdit()">Spara</button>
             </div>
         </div>
     </div>
@@ -308,6 +393,46 @@ async function testNotifier(id) {
     }, 3000);
 }
 
+// --- Händelsekryssrutor i listan ---
+const csrfToken = document.getElementById('csrf-token').dataset.token;
+
+async function saveEvents(targetId) {
+    const allCb = document.getElementById(`ev-all-${targetId}`);
+    let events;
+    if (allCb.checked) {
+        events = ['all'];
+    } else {
+        const checked = [...document.querySelectorAll(`.ev-cb-${targetId}:checked`)].map(cb => cb.dataset.event);
+        events = checked.length > 0 ? checked : ['all'];
+        if (!checked.length) { allCb.checked = true; document.querySelectorAll(`.ev-cb-${targetId}`).forEach(el => el.disabled = true); }
+    }
+    const fd = new FormData();
+    fd.append('csrf_token', csrfToken);
+    fd.append('events_json', JSON.stringify(events));
+    try { await fetch(`/settings/notifications/${targetId}/events`, { method: 'POST', body: fd }); } catch(e) {}
+}
+
+function onAllChange(targetId, cb) {
+    document.querySelectorAll(`.ev-cb-${targetId}`).forEach(el => { el.checked = cb.checked; el.disabled = cb.checked; });
+    saveEvents(targetId);
+}
+
+function onEventChange(targetId) {
+    const cbs = [...document.querySelectorAll(`.ev-cb-${targetId}`)];
+    const allChecked = cbs.every(cb => cb.checked);
+    const allCb = document.getElementById(`ev-all-${targetId}`);
+    if (allChecked) { allCb.checked = true; cbs.forEach(el => el.disabled = true); }
+    saveEvents(targetId);
+}
+
+// --- Lägg till-formulär: tjänstval ---
+function onKindChange(kind) {
+    document.getElementById('hidden-kind').value = kind;
+    document.getElementById('ntfy-fields').classList.toggle('d-none', kind !== 'ntfy');
+    document.getElementById('mode-toggle').classList.toggle('d-none', !kind);
+    if (kind === 'ntfy') syncFormToJson();
+}
+
 // --- Formulär-/JSON-läge ---
 let currentMode = 'form';
 
@@ -339,29 +464,21 @@ function syncFormToJson() {
         topic: document.getElementById('field-topic').value.trim(),
         auth_type: getAuthType(),
     };
-    const authType = cfg.auth_type;
-    if (authType === 'token') cfg.token = document.getElementById('field-token').value;
-    if (authType === 'password') {
+    if (cfg.auth_type === 'token') cfg.token = document.getElementById('field-token').value;
+    if (cfg.auth_type === 'password') {
         cfg.username = document.getElementById('field-username').value;
         cfg.password = document.getElementById('field-password').value;
     }
     document.getElementById('hidden-config-json').value = JSON.stringify(cfg);
-    if (currentMode === 'json') {
-        document.getElementById('json-config').value = JSON.stringify(cfg, null, 2);
-    }
+    if (currentMode === 'json') document.getElementById('json-config').value = JSON.stringify(cfg, null, 2);
 }
 
 function syncEventsToJson() {
-    const allCb = document.getElementById('ev-all');
-    if (allCb.checked) {
-        document.getElementById('hidden-events-json').value = '["all"]';
-        return;
-    }
-    const checked = [...document.querySelectorAll('.event-cb:checked')].map(cb => cb.value);
+    const allCb = document.getElementById('ev-all-new');
+    if (allCb.checked) { document.getElementById('hidden-events-json').value = '["all"]'; return; }
+    const checked = [...document.querySelectorAll('.event-cb-new:checked')].map(cb => cb.value);
     document.getElementById('hidden-events-json').value = JSON.stringify(checked.length ? checked : ['all']);
-    if (currentMode === 'json') {
-        document.getElementById('json-events').value = document.getElementById('hidden-events-json').value;
-    }
+    if (currentMode === 'json') document.getElementById('json-events').value = document.getElementById('hidden-events-json').value;
 }
 
 function syncJsonToForm() {
@@ -387,13 +504,11 @@ function syncJsonToForm() {
 }
 
 function syncJsonEventsToHidden() {
-    const raw = document.getElementById('json-events').value.trim();
-    document.getElementById('hidden-events-json').value = raw || '["all"]';
+    document.getElementById('hidden-events-json').value = document.getElementById('json-events').value.trim() || '["all"]';
 }
 
 function toggleServerField() {
-    const isCustom = document.getElementById('srv-custom').checked;
-    document.getElementById('custom-server-field').classList.toggle('d-none', !isCustom);
+    document.getElementById('custom-server-field').classList.toggle('d-none', !document.getElementById('srv-custom').checked);
     syncFormToJson();
 }
 
@@ -404,25 +519,66 @@ function toggleAuthFields() {
     syncFormToJson();
 }
 
-function toggleAllEvents(cb) {
-    document.querySelectorAll('.event-cb').forEach(el => { el.checked = false; el.disabled = cb.checked; });
+function toggleAllEventsNew(cb) {
+    document.querySelectorAll('.event-cb-new').forEach(el => { el.checked = false; el.disabled = cb.checked; });
     syncEventsToJson();
 }
 
 function formSubmit(e) {
-    if (currentMode === 'form') {
-        syncFormToJson();
-        syncEventsToJson();
-    } else {
-        const raw = document.getElementById('json-config').value.trim();
-        document.getElementById('hidden-config-json').value = raw || '{}';
+    if (currentMode === 'form') { syncFormToJson(); syncEventsToJson(); }
+    else {
+        document.getElementById('hidden-config-json').value = document.getElementById('json-config').value.trim() || '{}';
         syncJsonEventsToHidden();
     }
 }
 
-// Init: disable specific event checkboxes since "all" is checked
-document.querySelectorAll('.event-cb').forEach(el => el.disabled = true);
-syncFormToJson();
+// --- Redigera notifiering ---
+let editTargetId = null;
+
+function openEdit(id, cfg) {
+    editTargetId = id;
+    const server = cfg.server || 'https://ntfy.sh';
+    const isCustom = server !== 'https://ntfy.sh';
+    document.getElementById('edit-srv-public').checked = !isCustom;
+    document.getElementById('edit-srv-custom').checked = isCustom;
+    document.getElementById('edit-custom-server').classList.toggle('d-none', !isCustom);
+    document.getElementById('edit-field-server').value = isCustom ? server : '';
+    document.getElementById('edit-field-topic').value = cfg.topic || cfg.url || '';
+    const authType = cfg.auth_type || 'none';
+    document.querySelector(`input[name="edit_auth_type"][value="${authType}"]`).checked = true;
+    document.getElementById('edit-field-token').value = cfg.token || '';
+    document.getElementById('edit-field-username').value = cfg.username || '';
+    document.getElementById('edit-field-password').value = cfg.password || '';
+    editToggleAuth();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editNotifModal')).show();
+}
+
+function editToggleServer() {
+    document.getElementById('edit-custom-server').classList.toggle('d-none', !document.getElementById('edit-srv-custom').checked);
+}
+
+function editToggleAuth() {
+    const authType = document.querySelector('input[name="edit_auth_type"]:checked').value;
+    document.getElementById('edit-token-field').classList.toggle('d-none', authType !== 'token');
+    document.getElementById('edit-password-fields').classList.toggle('d-none', authType !== 'password');
+}
+
+async function saveEdit() {
+    const isCustom = document.getElementById('edit-srv-custom').checked;
+    const server = isCustom ? document.getElementById('edit-field-server').value.trim() : 'https://ntfy.sh';
+    const authType = document.querySelector('input[name="edit_auth_type"]:checked').value;
+    const cfg = { server, topic: document.getElementById('edit-field-topic').value.trim(), auth_type: authType };
+    if (authType === 'token') cfg.token = document.getElementById('edit-field-token').value;
+    if (authType === 'password') {
+        cfg.username = document.getElementById('edit-field-username').value;
+        cfg.password = document.getElementById('edit-field-password').value;
+    }
+    const fd = new FormData();
+    fd.append('csrf_token', csrfToken);
+    fd.append('config_json', JSON.stringify(cfg));
+    await fetch(`/settings/notifications/${editTargetId}/update`, { method: 'POST', body: fd });
+    window.location.reload();
+}
 
 // --- reMarkable mappläsare ---
 let rmPath = '/';
