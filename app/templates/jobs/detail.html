@@ -63,6 +63,27 @@
         </div>
     </div>
 </div>
+
+{% if crosswords %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Behandlade filer</h5>
+    </div>
+    <div class="card-body p-0">
+        <ul class="list-group list-group-flush">
+        {% for cw in crosswords %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span class="text-muted small font-monospace">{{ cw.pdf_path.split('/')[-1] if cw.pdf_path else '-' }}</span>
+                <span class="d-flex gap-2">
+                    <a href="/crosswords/{{ cw.id }}/view" target="_blank" class="btn btn-sm btn-outline-secondary">Visa</a>
+                    <a href="/crosswords/{{ cw.id }}/download" class="btn btn-sm btn-outline-secondary">Ladda ner</a>
+                </span>
+            </li>
+        {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>

@@ -122,5 +122,9 @@ async def job_status(job_id: int, db: Session = Depends(get_db), user=Depends(ge
 
 @router.get("/{job_id}")
 async def job_detail(job_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.database import Crossword
     job = db.query(Job).filter(Job.id == job_id).first()
-    return templates.TemplateResponse(request, "jobs/detail.html", {"job": job})
+    crosswords = []
+    if job and job.issue_id:
+        crosswords = db.query(Crossword).filter(Crossword.issue_id == job.issue_id).all()
+    return templates.TemplateResponse(request, "jobs/detail.html", {"job": job, "crosswords": crosswords})
