@@ -1,10 +1,12 @@
 import urllib.parse
 
 from fastapi import APIRouter, Depends, Request, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import Job, get_db
-from app.deps import templates, get_current_user
+from app.deps import templates, get_current_user, require_admin
+from app.csrf import CsrfProtect
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -43,6 +45,12 @@ async def list_jobs(
             "base_params": base_params,
         },
     )
+
+@router.post("/clear")
+async def clear_jobs(db: Session = Depends(get_db), user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
+    db.query(Job).filter(Job.state.in_(["done", "failed"])).delete(synchronize_session=False)
+    db.commit()
+    return RedirectResponse(url="/jobs", status_code=303)
 
 @router.get("/latest")
 async def jobs_latest(db: Session = Depends(get_db), user=Depends(get_current_user)):

@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, Request, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.database import Source, Issue, Crossword, get_db
+from app.database import Source, Issue, Crossword, get_db, get_setting
 from app.deps import templates, require_admin, get_current_user
 from app.scheduler import run_pipeline_for_source, rerender_issues_for_source
+from app.config import DEFAULT_TIMEZONE
 from app.csrf import CsrfProtect
 
 router = APIRouter(prefix="/sources", tags=["sources"])
@@ -17,8 +18,9 @@ async def list_sources(request: Request, db: Session = Depends(get_db), user=Dep
     return templates.TemplateResponse(request, "sources/list.html", {"sources": sources})
 
 @router.get("/new")
-async def new_source_form(request: Request, user=Depends(require_admin)):
-    return templates.TemplateResponse(request, "sources/form.html")
+async def new_source_form(request: Request, db: Session = Depends(get_db), user=Depends(require_admin)):
+    tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
+    return templates.TemplateResponse(request, "sources/form.html", {"timezone": tz})
 
 @router.post("/")
 async def create_source(
@@ -54,7 +56,8 @@ async def source_detail(source_id: int, request: Request, db: Session = Depends(
 @router.get("/{source_id}/edit")
 async def edit_source_form(source_id: int, request: Request, db: Session = Depends(get_db), user=Depends(require_admin)):
     source = db.query(Source).filter(Source.id == source_id).first()
-    return templates.TemplateResponse(request, "sources/form.html", {"source": source})
+    tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
+    return templates.TemplateResponse(request, "sources/form.html", {"source": source, "timezone": tz})
 
 @router.post("/{source_id}/edit")
 async def update_source(

@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
-from app.config import ENABLE_SCHEDULER, REMARKABLE_FOLDER
+from app.config import DEFAULT_TIMEZONE, ENABLE_SCHEDULER, REMARKABLE_FOLDER
 from app.database import Crossword, Issue, Job, SessionLocal, Source, get_setting
 from app.services.notifier import get_notifiers
 from app.services.remarkable import get_remarkable_client
@@ -325,17 +325,18 @@ def rerender_issues_for_source(source_id: int):
         db.close()
 
 def setup_scheduler(app=None):
-    scheduler = BackgroundScheduler()
     if not ENABLE_SCHEDULER:
         logger.info("Scheduler is disabled via ENABLE_SCHEDULER")
-        return scheduler
+        return BackgroundScheduler()
 
     db = SessionLocal()
     try:
+        tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
+        scheduler = BackgroundScheduler(timezone=tz)
         sources = db.query(Source).filter(Source.enabled == True, Source.schedule_cron != None).all()
         for source in sources:
             try:
-                trigger = CronTrigger.from_crontab(source.schedule_cron)
+                trigger = CronTrigger.from_crontab(source.schedule_cron, timezone=tz)
                 scheduler.add_job(
                     run_pipeline_for_source,
                     trigger=trigger,
@@ -350,4 +351,5 @@ def setup_scheduler(app=None):
         db.close()
 
     scheduler.start()
+    logger.info(f"Scheduler started with timezone {tz}")
     return scheduler

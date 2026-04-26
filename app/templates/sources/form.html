@@ -36,10 +36,48 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Schema (cron)</label>
-                        <input type="text" name="schedule_cron" class="form-control" placeholder="30 6 * * 1"
-                               value="{{ source.schedule_cron if source else '' }}">
-                        <div class="form-text">T.ex. '30 6 * * *' för varje dag kl 06:30.</div>
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <label class="form-label mb-0">Schema</label>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="cronModeToggle" role="switch">
+                                <label class="form-check-label small text-muted" for="cronModeToggle">CRON</label>
+                            </div>
+                        </div>
+
+                        <!-- Läsbart UI -->
+                        <div id="scheduleUI">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <select id="schedFreq" class="form-select w-auto">
+                                    <option value="never">Inaktivt</option>
+                                    <option value="daily">Varje dag</option>
+                                    <option value="weekly">Utvalda veckodagar</option>
+                                </select>
+                                <span id="schedAtLabel" class="text-muted">kl.</span>
+                                <div id="schedTimePart" class="d-flex align-items-center gap-1">
+                                    <input type="number" id="schedHour" class="form-control" style="width:4.5rem" min="0" max="23" placeholder="6">
+                                    <span class="text-muted">:</span>
+                                    <input type="number" id="schedMin" class="form-control" style="width:4.5rem" min="0" max="59" placeholder="0">
+                                </div>
+                            </div>
+                            <div id="schedDays" class="d-flex gap-3 mt-2 flex-wrap d-none">
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d1" value="1"><label class="form-check-label" for="d1">Mån</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d2" value="2"><label class="form-check-label" for="d2">Tis</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d3" value="3"><label class="form-check-label" for="d3">Ons</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d4" value="4"><label class="form-check-label" for="d4">Tor</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d5" value="5"><label class="form-check-label" for="d5">Fre</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d6" value="6"><label class="form-check-label" for="d6">Lör</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input sched-day" type="checkbox" id="d0" value="0"><label class="form-check-label" for="d0">Sön</label></div>
+                            </div>
+                        </div>
+
+                        <!-- Rå CRON -->
+                        <div id="cronRawUI" class="d-none">
+                            <input type="text" id="cronRawInput" class="form-control font-monospace" placeholder="30 6 * * *">
+                            <div class="form-text">Fem fält: minut timme dag-i-månaden månad veckodag (0=sön, 1=mån…6=lör). Lämna tomt för inaktivt.</div>
+                        </div>
+
+                        <input type="hidden" name="schedule_cron" id="scheduleHidden">
+                        <div id="schedNextRun" class="form-text mt-1"></div>
                     </div>
 
                     <!-- Korsordio specifika fält -->
@@ -149,6 +187,137 @@
 {% else %}
 <script>const _existing = null;</script>
 {% endif %}
+
+<script>
+(function() {
+    const toggle    = document.getElementById('cronModeToggle');
+    const uiDiv     = document.getElementById('scheduleUI');
+    const rawDiv    = document.getElementById('cronRawUI');
+    const hidden    = document.getElementById('scheduleHidden');
+    const freqSel   = document.getElementById('schedFreq');
+    const hourInp   = document.getElementById('schedHour');
+    const minInp    = document.getElementById('schedMin');
+    const daysDiv   = document.getElementById('schedDays');
+    const rawInp    = document.getElementById('cronRawInput');
+    const atLabel   = document.getElementById('schedAtLabel');
+    const timePart  = document.getElementById('schedTimePart');
+    const dayCbs    = Array.from(document.querySelectorAll('.sched-day'));
+
+    function buildCron() {
+        const freq = freqSel.value;
+        if (freq === 'never') return '';
+        const h = Math.max(0, Math.min(23, parseInt(hourInp.value, 10) || 0));
+        const m = Math.max(0, Math.min(59, parseInt(minInp.value, 10) || 0));
+        if (freq === 'daily') return `${m} ${h} * * *`;
+        const days = dayCbs.filter(c => c.checked).map(c => c.value).sort((a, b) => a - b);
+        if (!days.length) return '';
+        if (days.length === 7) return `${m} ${h} * * *`;
+        return `${m} ${h} * * ${days.join(',')}`;
+    }
+
+    function parseCron(cron) {
+        if (!cron || !cron.trim()) return { ok: true, freq: 'never' };
+        const p = cron.trim().split(/\s+/);
+        if (p.length !== 5) return { ok: false };
+        const [min, hour, dom, month, dow] = p;
+        if (dom !== '*' || month !== '*') return { ok: false };
+        const m = parseInt(min, 10), h = parseInt(hour, 10);
+        if (isNaN(m) || isNaN(h) || m < 0 || m > 59 || h < 0 || h > 23) return { ok: false };
+        if (dow === '*') return { ok: true, freq: 'daily', h, m };
+        const days = dow.split(',').map(Number);
+        if (days.some(isNaN) || days.some(d => d < 0 || d > 7)) return { ok: false };
+        return { ok: true, freq: 'weekly', h, m, days: days.map(d => d === 7 ? '0' : String(d)) };
+    }
+
+    function applyToUI({ freq, h = 6, m = 0, days = [] }) {
+        freqSel.value = freq;
+        hourInp.value = h;
+        minInp.value  = m;
+        dayCbs.forEach(cb => { cb.checked = days.includes(cb.value); });
+        refreshUI();
+    }
+
+    function nextRunFromCron(cron) {
+        if (!cron) return null;
+        const p = cron.trim().split(/\s+/);
+        if (p.length !== 5) return null;
+        const [min, hour, , , dow] = p;
+        const m = parseInt(min, 10), h = parseInt(hour, 10);
+        if (isNaN(m) || isNaN(h)) return null;
+        const allowedDays = dow === '*' ? null : dow.split(',').map(Number);
+        const now = new Date();
+        const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+        for (let i = 0; i < 8; i++) {
+            const d = new Date(candidate.getTime() + i * 86400000);
+            if (d <= now) continue;
+            const wd = d.getDay(); // 0=sun
+            if (allowedDays && !allowedDays.includes(wd)) continue;
+            return d;
+        }
+        return null;
+    }
+
+    function updateNextRun() {
+        const el = document.getElementById('schedNextRun');
+        const cron = hidden.value;
+        if (!cron) { el.textContent = ''; return; }
+        const next = nextRunFromCron(cron);
+        if (!next) { el.textContent = ''; return; }
+        el.textContent = 'Nästa körning: ' + next.toLocaleString('sv-SE', {
+            timeZone: SERVER_TZ,
+            weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) + ' (' + SERVER_TZ + ')';
+    }
+
+    function refreshUI() {
+        const freq = freqSel.value;
+        const showTime = freq !== 'never';
+        atLabel.style.display  = showTime ? '' : 'none';
+        timePart.style.display = showTime ? '' : 'none';
+        daysDiv.classList.toggle('d-none', freq !== 'weekly');
+        hidden.value = buildCron();
+        updateNextRun();
+    }
+
+    toggle.addEventListener('change', function() {
+        if (toggle.checked) {
+            uiDiv.classList.add('d-none');
+            rawDiv.classList.remove('d-none');
+            rawInp.value = hidden.value;
+        } else {
+            const parsed = parseCron(rawInp.value);
+            if (!parsed.ok) { toggle.checked = true; return; }
+            uiDiv.classList.remove('d-none');
+            rawDiv.classList.add('d-none');
+            applyToUI(parsed);
+        }
+    });
+
+    freqSel.addEventListener('change', refreshUI);
+    hourInp.addEventListener('input', refreshUI);
+    minInp.addEventListener('input', refreshUI);
+    dayCbs.forEach(cb => cb.addEventListener('change', refreshUI));
+    rawInp.addEventListener('input', () => { hidden.value = rawInp.value.trim(); updateNextRun(); });
+
+    document.getElementById('sourceForm').addEventListener('submit', function() {
+        hidden.value = toggle.checked ? rawInp.value.trim() : buildCron();
+    });
+
+    // Initiera från befintligt värde
+    const SERVER_TZ = {{ (timezone if timezone else 'Europe/Stockholm') | tojson }};
+    const existingCron = {{ (source.schedule_cron if source else '') | tojson }};
+    const parsed = parseCron(existingCron);
+    if (parsed.ok) {
+        applyToUI(parsed);
+    } else {
+        toggle.checked = true;
+        hidden.value = existingCron;
+        uiDiv.classList.add('d-none');
+        rawDiv.classList.remove('d-none');
+        rawInp.value = existingCron;
+    }
+})();
+</script>
 
 <script id="prenly-bm-source" type="text/plain">
 (function () {

@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.database import NotificationTarget, get_db, get_setting
+from app.database import NotificationTarget, get_db, get_setting, set_setting
 from app.deps import templates, require_admin, get_current_user
-from app.config import REMARKABLE_CLIENT, REMARKABLE_FOLDER
+from app.config import REMARKABLE_CLIENT, REMARKABLE_FOLDER, DEFAULT_TIMEZONE
 from app.services.remarkable import is_rmapi_authenticated, register_remarkable
 from app.services.notifier import build_notifier, NOTIFICATION_EVENTS
 from app.csrf import CsrfProtect
@@ -41,10 +41,21 @@ async def settings_view(request: Request, db: Session = Depends(get_db), user=De
             "remarkable_client": REMARKABLE_CLIENT,
             "rmapi_authenticated": is_rmapi_authenticated(),
             "remarkable_folder": get_setting(db, "remarkable_folder", REMARKABLE_FOLDER),
+            "timezone": get_setting(db, "timezone", DEFAULT_TIMEZONE),
             "flash_msg": request.query_params.get("msg"),
             "flash_type": request.query_params.get("msg_type", "success"),
         },
     )
+
+@router.post("/timezone")
+async def update_timezone(
+    timezone: str = Form(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+    _csrf: CsrfProtect = Depends(CsrfProtect())
+):
+    set_setting(db, "timezone", timezone.strip())
+    return RedirectResponse(url="/settings?msg=Tidszon+sparad&msg_type=success", status_code=303)
 
 @router.post("/remarkable/connect")
 async def connect_remarkable(

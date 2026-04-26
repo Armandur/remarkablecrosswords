@@ -10,6 +10,7 @@ REMARKABLE_FOLDER = os.environ.get("REMARKABLE_FOLDER", "/Korsord")
 NTFY_URL = os.environ.get("NTFY_URL")
 REMARKABLE_CLIENT = os.environ.get("REMARKABLE_CLIENT", "rmapi")
 ENABLE_SCHEDULER = os.environ.get("ENABLE_SCHEDULER", "true").lower() == "true"
+DEFAULT_TIMEZONE = os.environ.get("TIMEZONE", "Europe/Stockholm")
 
 # Path-objekt
 DATA_DIR = DATA_DIR_PATH
