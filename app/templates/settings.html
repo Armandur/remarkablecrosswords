@@ -127,11 +127,11 @@
                                                 onclick="openEdit({{ t.id }}, {{ t.config | tojson }})">Redigera</button>
                                         <form action="/settings/notifications/{{ t.id }}/toggle" method="POST" class="d-inline">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-sm btn-outline-secondary">Växla</button>
+                                            <button type="submit" class="btn btn-outline-secondary">Växla</button>
                                         </form>
                                         <form action="/settings/notifications/{{ t.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Ta bort?')">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">Ta bort</button>
+                                            <button type="submit" class="btn btn-outline-danger">Ta bort</button>
                                         </form>
                                     </div>
                                 </td>
