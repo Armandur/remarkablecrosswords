@@ -38,7 +38,7 @@
     </div>
 </form>
 
-<div class="card shadow-sm mb-4">
+<div class="card shadow-sm mb-2">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
@@ -53,67 +53,32 @@
                     </tr>
                 </thead>
                 <tbody id="jobs-tbody">
-                {% for job in jobs %}
-                    <tr>
-                        <td class="align-middle"><code>#{{ job.id }}</code></td>
-                        <td class="align-middle">{{ job.kind }}</td>
-                        <td class="align-middle">
-                            {% if job.state == 'done' %}
-                                <span class="badge bg-success">Lyckades</span>
-                            {% elif job.state == 'failed' %}
-                                <span class="badge bg-danger">Misslyckades</span>
-                            {% elif job.state == 'running' %}
-                                <span class="badge bg-warning text-dark">Körs</span>
-                            {% else %}
-                                <span class="badge bg-secondary">{{ job.state }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="align-middle text-muted small">{{ job.started_at }}</td>
-                        <td class="align-middle text-muted small">{{ job.finished_at or '-' }}</td>
-                        <td class="text-end align-middle">
-                            <a href="/jobs/{{ job.id }}" class="btn btn-sm btn-outline-secondary">Detaljer</a>
-                        </td>
-                    </tr>
-                {% endfor %}
-                {% if not jobs %}
-                    <tr>
-                        <td colspan="6" class="text-center text-muted py-4">Inga jobb hittades</td>
-                    </tr>
-                {% endif %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">Laddar...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
 
-{% if total > limit %}
-<nav aria-label="Job pagination">
-  <ul class="pagination justify-content-center">
-    <li class="page-item {% if offset == 0 %}disabled{% endif %}">
-      <a class="page-link" href="/jobs?{{ base_params }}&offset={{ [0, offset - limit]|max }}">Föregående</a>
-    </li>
-    <li class="page-item disabled">
-      <span class="page-link text-dark">
-        Visar {{ offset + 1 }}–{{ [offset + limit, total]|min }} av {{ total }}
-      </span>
-    </li>
-    <li class="page-item {% if offset + limit >= total %}disabled{% endif %}">
-      <a class="page-link" href="/jobs?{{ base_params }}&offset={{ offset + limit }}">Nästa</a>
-    </li>
-  </ul>
-</nav>
-{% endif %}
-
+<div id="jobs-pagination" class="mt-2"></div>
 {% endblock %}
 {% block scripts %}
 <script>
 (function () {
     const params = new URLSearchParams(window.location.search);
-    const offset = parseInt(params.get('offset') || '0');
-    const limit = parseInt(params.get('limit') || '20');
+    let offset = parseInt(params.get('offset') || '0');
     const state = params.get('state') || '';
     const kind = params.get('kind') || '';
     const q = params.get('q') || '';
+    let limit = 20;
+    let total = 0;
+    const tbody = document.getElementById('jobs-tbody');
+    const paginEl = document.getElementById('jobs-pagination');
+
+    function calcLimit() {
+        const top = tbody.getBoundingClientRect().top;
+        return Math.max(5, Math.floor((window.innerHeight - top - 80) / 47));
+    }
 
     function stateBadge(s) {
         if (s === 'done') return '<span class="badge bg-success">Lyckades</span>';
@@ -126,32 +91,55 @@
         return iso ? new Date(iso).toLocaleString('sv-SE') : '-';
     }
 
-    async function refresh() {
+    function renderPagination() {
+        if (total <= limit) { paginEl.innerHTML = ''; return; }
+        const from = offset + 1, to = Math.min(offset + limit, total);
+        const prevDisabled = offset === 0;
+        const nextDisabled = offset + limit >= total;
+        paginEl.innerHTML = `<nav><ul class="pagination justify-content-center mb-0">
+            <li class="page-item ${prevDisabled ? 'disabled' : ''}">
+                <button class="page-link" onclick="jobsGoTo(${Math.max(0, offset - limit)})" ${prevDisabled ? 'disabled' : ''}>Föregående</button>
+            </li>
+            <li class="page-item disabled"><span class="page-link text-dark">${from}–${to} av ${total}</span></li>
+            <li class="page-item ${nextDisabled ? 'disabled' : ''}">
+                <button class="page-link" onclick="jobsGoTo(${offset + limit})" ${nextDisabled ? 'disabled' : ''}>Nästa</button>
+            </li>
+        </ul></nav>`;
+    }
+
+    async function load() {
+        const newLimit = calcLimit();
+        if (newLimit !== limit) { limit = newLimit; offset = 0; }
         try {
             const url = `/jobs/page?offset=${offset}&limit=${limit}&state=${encodeURIComponent(state)}&kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(q)}`;
-            const resp = await fetch(url);
-            if (!resp.ok) return;
-            const data = await resp.json();
-            const tbody = document.getElementById('jobs-tbody');
-            if (!tbody) return;
-            if (data.jobs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Inga jobb hittades</td></tr>';
-                return;
-            }
-            tbody.innerHTML = data.jobs.map(j => `
-                <tr>
+            const r = await fetch(url);
+            if (!r.ok) return;
+            const data = await r.json();
+            total = data.total;
+            tbody.innerHTML = data.jobs.length === 0
+                ? '<tr><td colspan="6" class="text-center text-muted py-4">Inga jobb hittades</td></tr>'
+                : data.jobs.map(j => `<tr>
                     <td class="align-middle"><code>#${j.id}</code></td>
                     <td class="align-middle">${j.kind}</td>
                     <td class="align-middle">${stateBadge(j.state)}</td>
                     <td class="align-middle text-muted small">${formatDt(j.started_at)}</td>
                     <td class="align-middle text-muted small">${formatDt(j.finished_at)}</td>
                     <td class="text-end align-middle"><a href="/jobs/${j.id}" class="btn btn-sm btn-outline-secondary">Detaljer</a></td>
-                </tr>
-            `).join('');
-        } catch (e) {}
+                </tr>`).join('');
+            renderPagination();
+        } catch(e) {}
     }
 
-    setInterval(refresh, 4000);
+    window.jobsGoTo = function(off) { offset = off; load(); };
+
+    let resizeTimer;
+    window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(load, 200);
+    });
+
+    load();
+    setInterval(load, 4000);
 })();
 </script>
 {% endblock %}

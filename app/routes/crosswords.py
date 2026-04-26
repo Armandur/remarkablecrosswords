@@ -78,6 +78,55 @@ async def sync_crossword(crossword_id: int, background_tasks: BackgroundTasks, d
     background_tasks.add_task(run_sync_job, crossword_id, job.id)
     return JSONResponse({"job_id": job.id})
 
+@router.get("/page")
+async def crosswords_page(
+    offset: int = 0,
+    limit: int = 20,
+    source_id: Optional[int] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    synced: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    query = db.query(Crossword, Issue, Source) \
+        .join(Issue, Crossword.issue_id == Issue.id) \
+        .join(Source, Issue.source_id == Source.id)
+    if source_id:
+        query = query.filter(Source.id == source_id)
+    if from_date:
+        try:
+            query = query.filter(Issue.published_at >= datetime.strptime(from_date, "%Y-%m-%d"))
+        except ValueError:
+            pass
+    if to_date:
+        try:
+            dt_to = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            query = query.filter(Issue.published_at <= dt_to)
+        except ValueError:
+            pass
+    if synced == 'yes':
+        query = query.filter(Crossword.synced_at.isnot(None))
+    elif synced == 'no':
+        query = query.filter(Crossword.synced_at.is_(None))
+    total = query.count()
+    rows = query.order_by(Issue.published_at.desc(), Crossword.id.desc()).offset(offset).limit(limit).all()
+    return JSONResponse({
+        "total": total, "offset": offset, "limit": limit,
+        "crosswords": [
+            {
+                "id": cw.id,
+                "name": issue.name,
+                "source": source.name,
+                "published_at": issue.published_at.isoformat() if issue.published_at else None,
+                "synced_at": cw.synced_at.isoformat() if cw.synced_at else None,
+                "has_pdf": bool(cw.pdf_path),
+            }
+            for cw, issue, source in rows
+        ],
+    })
+
 @router.get("/{crossword_id}/view")
 async def view_crossword(crossword_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     cw = db.query(Crossword).filter(Crossword.id == crossword_id).first()

@@ -38,7 +38,7 @@
     </div>
 </div>
 
-<div class="card shadow-sm">
+<div class="card shadow-sm mb-2">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
@@ -46,64 +46,113 @@
                     <tr>
                         <th>Namn</th>
                         <th>Källa</th>
-                        <th>Datum / Info</th>
+                        <th>Datum</th>
                         <th>Synkstatus</th>
                         <th class="text-end">Åtgärder</th>
                     </tr>
                 </thead>
-                <tbody>
-                {% for cw, issue, source in crosswords %}
-                    <tr>
-                        <td class="align-middle fw-bold">{{ issue.name }}</td>
-                        <td class="align-middle">{{ source.name }}</td>
-                        <td class="align-middle text-muted small">
-                            {{ issue.published_at.strftime('%Y-%m-%d') if issue.published_at else '-' }}
-                        </td>
-                        <td class="align-middle" id="sync-status-{{ cw.id }}">
-                            {% if cw.synced_at %}
-                                <span class="badge bg-success" title="Synkad: {{ cw.synced_at }}">Synkad</span>
-                            {% else %}
-                                <span class="badge bg-warning text-dark">Väntar</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end align-middle">
-                            <div class="btn-group btn-group-sm">
-                                {% if cw.pdf_path %}
-                                <a href="/crosswords/{{ cw.id }}/view" target="_blank" class="btn btn-outline-primary">Visa</a>
-                                <a href="/crosswords/{{ cw.id }}/download" class="btn btn-outline-secondary">Ladda ned</a>
-                                {% endif %}
-                                <button type="button" class="btn btn-outline-success" onclick="syncCrossword({{ cw.id }}, this)">Synka</button>
-                            </div>
-                        </td>
-                    </tr>
-                {% endfor %}
-                {% if not crosswords %}
-                    <tr>
-                        <td colspan="5" class="text-center text-muted py-4">Inga korsord hittades</td>
-                    </tr>
-                {% endif %}
+                <tbody id="crosswords-tbody">
+                    <tr><td colspan="5" class="text-center text-muted py-4">Laddar...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
 
-{% if total > limit %}
-<nav aria-label="Korsordspaginering" class="mt-3">
-  <ul class="pagination justify-content-center">
-    <li class="page-item {% if offset == 0 %}disabled{% endif %}">
-      <a class="page-link" href="/crosswords?{{ base_params }}&offset={{ [0, offset - limit]|max }}">Föregående</a>
-    </li>
-    <li class="page-item disabled">
-      <span class="page-link text-dark">{{ offset + 1 }}–{{ [offset + limit, total]|min }} av {{ total }}</span>
-    </li>
-    <li class="page-item {% if offset + limit >= total %}disabled{% endif %}">
-      <a class="page-link" href="/crosswords?{{ base_params }}&offset={{ offset + limit }}">Nästa</a>
-    </li>
-  </ul>
-</nav>
-{% endif %}
+<div id="crosswords-pagination" class="mt-2"></div>
+{% endblock %}
+{% block scripts %}
 <script>
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    let offset = 0;
+    const sourceId = params.get('source_id') || '';
+    const fromDate = params.get('from_date') || '';
+    const toDate = params.get('to_date') || '';
+    const synced = params.get('synced') || '';
+    let limit = 20;
+    let total = 0;
+    const tbody = document.getElementById('crosswords-tbody');
+    const paginEl = document.getElementById('crosswords-pagination');
+
+    function calcLimit() {
+        const top = tbody.getBoundingClientRect().top;
+        return Math.max(5, Math.floor((window.innerHeight - top - 80) / 47));
+    }
+
+    function syncBadge(cw) {
+        if (cw.synced_at) {
+            return `<span class="badge bg-success" title="Synkad: ${new Date(cw.synced_at).toLocaleString('sv-SE')}">Synkad</span>`;
+        }
+        return '<span class="badge bg-warning text-dark">Väntar</span>';
+    }
+
+    function renderPagination() {
+        if (total <= limit) { paginEl.innerHTML = ''; return; }
+        const from = offset + 1, to = Math.min(offset + limit, total);
+        const prevDisabled = offset === 0;
+        const nextDisabled = offset + limit >= total;
+        paginEl.innerHTML = `<nav><ul class="pagination justify-content-center mb-0">
+            <li class="page-item ${prevDisabled ? 'disabled' : ''}">
+                <button class="page-link" onclick="cwGoTo(${Math.max(0, offset - limit)})" ${prevDisabled ? 'disabled' : ''}>Föregående</button>
+            </li>
+            <li class="page-item disabled"><span class="page-link text-dark">${from}–${to} av ${total}</span></li>
+            <li class="page-item ${nextDisabled ? 'disabled' : ''}">
+                <button class="page-link" onclick="cwGoTo(${offset + limit})" ${nextDisabled ? 'disabled' : ''}>Nästa</button>
+            </li>
+        </ul></nav>`;
+    }
+
+    async function load() {
+        const newLimit = calcLimit();
+        if (newLimit !== limit) { limit = newLimit; offset = 0; }
+        try {
+            const url = `/crosswords/page?offset=${offset}&limit=${limit}`
+                + (sourceId ? `&source_id=${sourceId}` : '')
+                + (fromDate ? `&from_date=${fromDate}` : '')
+                + (toDate ? `&to_date=${toDate}` : '')
+                + (synced ? `&synced=${synced}` : '');
+            const r = await fetch(url);
+            if (!r.ok) return;
+            const data = await r.json();
+            total = data.total;
+            tbody.innerHTML = data.crosswords.length === 0
+                ? '<tr><td colspan="5" class="text-center text-muted py-4">Inga korsord hittades</td></tr>'
+                : data.crosswords.map(cw => {
+                    const date = cw.published_at ? new Date(cw.published_at).toLocaleDateString('sv-SE') : '-';
+                    const syncEl = cw.synced_at
+                        ? `<span class="badge bg-success" title="Synkad: ${new Date(cw.synced_at).toLocaleString('sv-SE')}">Synkad</span>`
+                        : '<span class="badge bg-warning text-dark">Väntar</span>';
+                    const viewBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/view" target="_blank" class="btn btn-sm btn-outline-primary">Visa</a>` : '';
+                    const dlBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/download" class="btn btn-sm btn-outline-secondary">Ladda ned</a>` : '';
+                    return `<tr>
+                        <td class="align-middle fw-bold">${cw.name}</td>
+                        <td class="align-middle">${cw.source}</td>
+                        <td class="align-middle text-muted small">${date}</td>
+                        <td class="align-middle" id="sync-status-${cw.id}">${syncEl}</td>
+                        <td class="text-end align-middle">
+                            <div class="btn-group btn-group-sm">
+                                ${viewBtn}${dlBtn}
+                                <button type="button" class="btn btn-outline-success" onclick="syncCrossword(${cw.id}, this)">Synka</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+            renderPagination();
+        } catch(e) {}
+    }
+
+    window.cwGoTo = function(off) { offset = off; load(); };
+
+    let resizeTimer;
+    window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(load, 200);
+    });
+
+    load();
+})();
+
 async function syncCrossword(id, btn) {
     const statusEl = document.getElementById(`sync-status-${id}`);
     if (btn) btn.disabled = true;

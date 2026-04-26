@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Text,
+    text,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -80,6 +81,7 @@ class NotificationTarget(Base):
     id = Column(Integer, primary_key=True, index=True)
     kind = Column(String, nullable=False)
     config_json = Column(Text, default="{}")
+    events_json = Column(Text, default='["all"]')
     enabled = Column(Boolean, default=True)
 
 class SystemSetting(Base):
@@ -107,17 +109,12 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 def init_db():
-    # Säkerställ att mappen finns
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Skapa tabeller om de inte finns
     Base.metadata.create_all(bind=engine)
-    
-    # ALTER TABLE-guards (exempel på hur man lägger till kolumner senare)
-    # inspector = inspect(engine)
-    # columns = [c["name"] for c in inspector.get_columns("sources")]
-    # with engine.connect() as conn:
-    #     if "new_column" not in columns:
-    #         conn.execute(text("ALTER TABLE sources ADD COLUMN new_column TEXT"))
-    #         conn.commit()
-    pass
+
+    inspector = inspect(engine)
+    nt_cols = [c["name"] for c in inspector.get_columns("notification_targets")]
+    with engine.connect() as conn:
+        if "events_json" not in nt_cols:
+            conn.execute(text("ALTER TABLE notification_targets ADD COLUMN events_json TEXT DEFAULT '[\"all\"]'"))
+            conn.commit()
