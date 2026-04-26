@@ -125,14 +125,10 @@
                                                 onclick="testNotifier({{ t.id }})">Testa</button>
                                         <button type="button" class="btn btn-outline-secondary"
                                                 onclick="openEdit({{ t.id }}, {{ t.config | tojson }})">Redigera</button>
-                                        <form action="/settings/notifications/{{ t.id }}/toggle" method="POST" class="d-inline">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-outline-secondary">Växla</button>
-                                        </form>
-                                        <form action="/settings/notifications/{{ t.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Ta bort?')">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-outline-danger">Ta bort</button>
-                                        </form>
+                                        <button type="button" class="btn btn-outline-secondary"
+                                                onclick="toggleNotifier({{ t.id }})">Växla</button>
+                                        <button type="button" class="btn btn-outline-danger"
+                                                onclick="deleteNotifier({{ t.id }})">Ta bort</button>
                                     </div>
                                 </td>
                             </tr>
@@ -393,19 +389,30 @@ async function testNotifier(id) {
     }, 3000);
 }
 
+// --- Växla / Ta bort ---
+async function toggleNotifier(id) {
+    const fd = new FormData();
+    fd.append('csrf_token', document.getElementById('csrf-token').dataset.token);
+    await fetch(`/settings/notifications/${id}/toggle`, { method: 'POST', body: fd });
+    window.location.reload();
+}
+
+async function deleteNotifier(id) {
+    if (!confirm('Ta bort notifieringsmål?')) return;
+    const fd = new FormData();
+    fd.append('csrf_token', document.getElementById('csrf-token').dataset.token);
+    await fetch(`/settings/notifications/${id}/delete`, { method: 'POST', body: fd });
+    window.location.reload();
+}
+
 // --- Händelsekryssrutor i listan ---
 const csrfToken = document.getElementById('csrf-token').dataset.token;
 
 async function saveEvents(targetId) {
     const allCb = document.getElementById(`ev-all-${targetId}`);
-    let events;
-    if (allCb.checked) {
-        events = ['all'];
-    } else {
-        const checked = [...document.querySelectorAll(`.ev-cb-${targetId}:checked`)].map(cb => cb.dataset.event);
-        events = checked.length > 0 ? checked : ['all'];
-        if (!checked.length) { allCb.checked = true; document.querySelectorAll(`.ev-cb-${targetId}`).forEach(el => el.disabled = true); }
-    }
+    const events = allCb.checked
+        ? ['all']
+        : [...document.querySelectorAll(`.ev-cb-${targetId}:checked`)].map(cb => cb.dataset.event);
     const fd = new FormData();
     fd.append('csrf_token', csrfToken);
     fd.append('events_json', JSON.stringify(events));
@@ -413,15 +420,30 @@ async function saveEvents(targetId) {
 }
 
 function onAllChange(targetId, cb) {
-    document.querySelectorAll(`.ev-cb-${targetId}`).forEach(el => { el.checked = cb.checked; el.disabled = cb.checked; });
-    saveEvents(targetId);
+    const cbs = document.querySelectorAll(`.ev-cb-${targetId}`);
+    if (cb.checked) {
+        cbs.forEach(el => { el.checked = true; el.disabled = true; });
+        saveEvents(targetId);
+    } else {
+        // Aktivera specifika bockar utan att spara — väntar på att användaren väljer
+        cbs.forEach(el => { el.checked = false; el.disabled = false; });
+    }
 }
 
 function onEventChange(targetId) {
     const cbs = [...document.querySelectorAll(`.ev-cb-${targetId}`)];
-    const allChecked = cbs.every(cb => cb.checked);
     const allCb = document.getElementById(`ev-all-${targetId}`);
-    if (allChecked) { allCb.checked = true; cbs.forEach(el => el.disabled = true); }
+    if (!cbs.some(cb => cb.checked)) {
+        // Inget valt — återgå till Alla
+        allCb.checked = true;
+        cbs.forEach(el => { el.checked = true; el.disabled = true; });
+        saveEvents(targetId);
+        return;
+    }
+    if (cbs.every(cb => cb.checked)) {
+        allCb.checked = true;
+        cbs.forEach(el => el.disabled = true);
+    }
     saveEvents(targetId);
 }
 
