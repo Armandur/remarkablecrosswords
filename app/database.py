@@ -10,12 +10,12 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Text,
-    text,
+    UniqueConstraint,
+    event,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
-from sqlalchemy import inspect
 
 from app.config import DB_PATH
 
@@ -25,6 +25,12 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+
+@event.listens_for(engine, "connect")
+def _fk_pragma_on(dbapi_conn, _):
+    dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -33,23 +39,26 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
 
+
 class Source(Base):
     __tablename__ = "sources"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    kind = Column(String, nullable=False)  # 'korsordio' | 'prenly'
+    kind = Column(String, nullable=False)
     enabled = Column(Boolean, default=True)
     schedule_cron = Column(String, nullable=True)
-    prefix = Column(String, nullable=True)  # reMarkable-mapp under REMARKABLE_FOLDER
+    prefix = Column(String, nullable=True)
     filename_template = Column(String, nullable=True)
     config_json = Column(Text, default="{}")
     overwrite = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
 
+
 class Issue(Base):
     __tablename__ = "issues"
+    __table_args__ = (UniqueConstraint("source_id", "external_id"),)
     id = Column(Integer, primary_key=True, index=True)
-    source_id = Column(Integer, ForeignKey("sources.id"), nullable=False)
+    source_id = Column(Integer, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
     external_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
     published_at = Column(DateTime, nullable=True)
@@ -57,15 +66,17 @@ class Issue(Base):
     downloaded_at = Column(DateTime, nullable=True)
     state = Column(String, default="pending")  # pending | downloaded | failed
 
+
 class Crossword(Base):
     __tablename__ = "crosswords"
     id = Column(Integer, primary_key=True, index=True)
-    issue_id = Column(Integer, ForeignKey("issues.id"), nullable=False)
+    issue_id = Column(Integer, ForeignKey("issues.id", ondelete="CASCADE"), nullable=False)
     pdf_path = Column(String, nullable=False)
     pages_json = Column(Text, nullable=True)
     extracted_at = Column(DateTime, nullable=True)
     synced_at = Column(DateTime, nullable=True)
     remarkable_path = Column(String, nullable=True)
+
 
 class Job(Base):
     __tablename__ = "jobs"
@@ -75,8 +86,9 @@ class Job(Base):
     finished_at = Column(DateTime, nullable=True)
     state = Column(String, nullable=False)  # running | done | failed
     log = Column(Text, nullable=True)
-    source_id = Column(Integer, ForeignKey("sources.id"), nullable=True)
-    issue_id = Column(Integer, ForeignKey("issues.id"), nullable=True)
+    source_id = Column(Integer, ForeignKey("sources.id", ondelete="CASCADE"), nullable=True)
+    issue_id = Column(Integer, ForeignKey("issues.id", ondelete="CASCADE"), nullable=True)
+
 
 class NotificationTarget(Base):
     __tablename__ = "notification_targets"
@@ -86,14 +98,17 @@ class NotificationTarget(Base):
     events_json = Column(Text, default='["all"]')
     enabled = Column(Boolean, default=True)
 
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
     key = Column(String, primary_key=True)
     value = Column(Text, nullable=True)
 
+
 def get_setting(db: Session, key: str, default: str | None = None) -> str | None:
     row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
     return row.value if row else default
+
 
 def set_setting(db: Session, key: str, value: str) -> None:
     row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
@@ -103,6 +118,7 @@ def set_setting(db: Session, key: str, value: str) -> None:
         db.add(SystemSetting(key=key, value=value))
     db.commit()
 
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -110,23 +126,7 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
+
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
-
-    inspector = inspect(engine)
-    nt_cols = [c["name"] for c in inspector.get_columns("notification_targets")]
-    src_cols = [c["name"] for c in inspector.get_columns("sources")]
-    with engine.connect() as conn:
-        if "events_json" not in nt_cols:
-            conn.execute(text("ALTER TABLE notification_targets ADD COLUMN events_json TEXT DEFAULT '[\"all\"]'"))
-            conn.commit()
-        if "overwrite" not in src_cols:
-            conn.execute(text("ALTER TABLE sources ADD COLUMN overwrite BOOLEAN DEFAULT 0"))
-            conn.execute(text("UPDATE sources SET overwrite = 1 WHERE json_extract(config_json, '$.overwrite') = 1"))
-            conn.commit()
-        if "filename_template" not in src_cols:
-            conn.execute(text("ALTER TABLE sources ADD COLUMN filename_template TEXT"))
-            conn.commit()
-        conn.execute(text("UPDATE sources SET schedule_cron = NULL WHERE schedule_cron = 'None'"))
-        conn.commit()

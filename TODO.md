@@ -2,13 +2,6 @@
 
 Aktuella uppgifter. Färdiga uppgifter flyttas till `TODO_DONE.md`.
 
-## Buggar
-
-- [ ] **Schemaläggaren uppdateras inte vid källändringar**  
-  `setup_scheduler` körs bara vid appstart. Sparar man ett nytt schema eller
-  lägger till en källa krävs omstart för att ändringen ska aktiveras.
-  APScheduler stödjer att lägga till/uppdatera jobb dynamiskt.
-
 ## Datamodell
 
 - [ ] **DB-reset och ren datamodell före produktion**  

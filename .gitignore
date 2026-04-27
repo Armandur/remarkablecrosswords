@@ -21,6 +21,9 @@ poc/*.pdf
 *.conf
 rmapi.conf
 
+# Lokalt seed-skript med credentials
+seed.py
+
 # tmp/gemini per global riktlinje
 tmp/gemini/
 
