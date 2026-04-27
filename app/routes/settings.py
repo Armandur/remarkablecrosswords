@@ -7,7 +7,7 @@ from app.database import NotificationTarget, get_db, get_setting, set_setting
 from app.deps import templates, require_admin, get_current_user
 from app.config import REMARKABLE_CLIENT, REMARKABLE_FOLDER, DEFAULT_TIMEZONE
 from app.services.remarkable import is_rmapi_authenticated, register_remarkable
-from app.services.notifier import build_notifier, NOTIFICATION_EVENTS, TEST_MESSAGES
+from app.services.notifier import build_notifier, NOTIFICATION_EVENTS, TEST_MESSAGES, NOTIFIER_KINDS
 from app.csrf import CsrfProtect
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -38,6 +38,7 @@ async def settings_view(request: Request, db: Session = Depends(get_db), user=De
         {
             "targets": targets,
             "notification_events": NOTIFICATION_EVENTS,
+            "notifier_kinds": NOTIFIER_KINDS,
             "remarkable_client": REMARKABLE_CLIENT,
             "rmapi_authenticated": is_rmapi_authenticated(),
             "remarkable_folder": get_setting(db, "remarkable_folder", REMARKABLE_FOLDER),
@@ -69,23 +70,34 @@ async def connect_remarkable(
 
 @router.post("/notifications")
 async def add_notification_target(
+    request: Request,
     kind: str = Form(...),
-    config_json: str = Form("{}"),
     events_json: str = Form('["all"]'),
     enabled: bool = Form(True),
     db: Session = Depends(get_db),
     user=Depends(require_admin),
     _csrf: CsrfProtect = Depends(CsrfProtect())
 ):
-    target = NotificationTarget(kind=kind, config_json=config_json, events_json=events_json, enabled=enabled)
+    form_data = await request.form()
+    config = {}
+    for key, value in form_data.items():
+        if key.startswith("cfg_"):
+            config[key[4:]] = value
+            
+    target = NotificationTarget(
+        kind=kind, 
+        config_json=json.dumps(config), 
+        events_json=events_json, 
+        enabled=enabled
+    )
     db.add(target)
     db.commit()
     return RedirectResponse(url="/settings", status_code=303)
 
 @router.post("/notifications/{target_id}/update")
 async def update_notification_target(
+    request: Request,
     target_id: int,
-    config_json: str = Form("{}"),
     db: Session = Depends(get_db),
     user=Depends(require_admin),
     _csrf: CsrfProtect = Depends(CsrfProtect())
@@ -93,7 +105,30 @@ async def update_notification_target(
     target = db.query(NotificationTarget).filter(NotificationTarget.id == target_id).first()
     if not target:
         return JSONResponse({"error": "Hittades inte"}, status_code=404)
-    target.config_json = config_json
+    
+    form_data = await request.form()
+    
+    try:
+        current_config = json.loads(target.config_json)
+    except Exception:
+        current_config = {}
+        
+    notifier_class = NOTIFIER_KINDS.get(target.kind)
+    password_fields = []
+    if notifier_class:
+        password_fields = [f["name"] for f in notifier_class.CONFIG_FIELDS if f["type"] == "password"]
+    
+    new_config = {}
+    for key, value in form_data.items():
+        if key.startswith("cfg_"):
+            field_name = key[4:]
+            if field_name in password_fields and not value:
+                # Keep existing value for empty password fields
+                new_config[field_name] = current_config.get(field_name, "")
+            else:
+                new_config[field_name] = value
+                
+    target.config_json = json.dumps(new_config)
     db.commit()
     return RedirectResponse(url="/settings", status_code=303)
 

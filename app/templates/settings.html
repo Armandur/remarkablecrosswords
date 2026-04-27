@@ -102,22 +102,28 @@
                         {% for t in targets %}
                             {% set is_all = 'all' in t.events %}
                             <tr>
-                                <td class="fw-bold">{{ t.kind }}</td>
+                                <td class="fw-bold">{{ notifier_kinds[t.kind].LABEL if t.kind in notifier_kinds else t.kind }}</td>
                                 <td class="small">
-                                    {% if t.kind == 'ntfy' %}
-                                        {% if t.config.get('topic') %}
-                                            <code>{{ t.config.get('server', 'https://ntfy.sh') }}/{{ t.config.get('topic') }}</code>
-                                        {% elif t.config.get('url') %}
-                                            <code>{{ t.config.get('url') }}</code>
-                                        {% else %}<span class="text-muted">–</span>{% endif %}
+                                    {% if t.kind in notifier_kinds %}
+                                        <div class="text-truncate" style="max-width: 300px;">
+                                            {% for field in notifier_kinds[t.kind].CONFIG_FIELDS if field.type != 'password' %}
+                                                {% if t.config.get(field.name) %}
+                                                    <span class="text-muted">{{ field.label }}:</span> <code>{{ t.config.get(field.name) }}</code><br>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
                                     {% else %}
                                         <code class="text-muted">{{ t.config }}</code>
                                     {% endif %}
                                 </td>
                                 <td class="small text-muted">
-                                    {% if t.config.get('auth_type') == 'token' %}Token
-                                    {% elif t.config.get('auth_type') == 'password' %}Lösenord
-                                    {% else %}Ingen{% endif %}
+                                    {% if t.kind == 'ntfy' %}
+                                        {% if t.config.get('auth_type') == 'token' %}Token
+                                        {% elif t.config.get('auth_type') == 'password' %}Lösenord
+                                        {% else %}Ingen{% endif %}
+                                    {% else %}
+                                        –
+                                    {% endif %}
                                 </td>
                                 <td class="text-center">
                                     <input type="checkbox" class="form-check-input"
@@ -174,10 +180,6 @@
         <div class="card shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0" id="form-card-title">Lägg till notifieringstjänst</h5>
-                <div id="mode-toggle" class="btn-group btn-group-sm d-none" role="group">
-                    <button type="button" id="mode-form-btn" class="btn btn-primary" onclick="setMode('form')">Formulär</button>
-                    <button type="button" id="mode-json-btn" class="btn btn-outline-secondary" onclick="setMode('json')">JSON</button>
-                </div>
             </div>
             <div class="card-body">
                 <div id="edit-mode-banner" class="alert alert-info d-flex justify-content-between align-items-center mb-3 d-none">
@@ -186,99 +188,64 @@
                 </div>
                 <form action="/settings/notifications" method="POST" id="notif-form" onsubmit="formSubmit(event)">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="kind" id="hidden-kind" value="">
-                    <input type="hidden" name="config_json" id="hidden-config-json" value="{}">
                     <input type="hidden" name="events_json" id="hidden-events-json" value='["all"]'>
 
                     <div class="mb-3">
                         <label for="kind-select" class="form-label fw-bold">Tjänst</label>
-                        <select id="kind-select" class="form-select" onchange="onKindChange(this.value)">
+                        <select id="kind-select" name="kind" class="form-select" onchange="onKindChange(this.value)" required>
                             <option value="">Välj tjänst...</option>
-                            <option value="ntfy">ntfy</option>
+                            {% for kind, cls in notifier_kinds.items() %}
+                            <option value="{{ kind }}">{{ cls.LABEL }}</option>
+                            {% endfor %}
                         </select>
                     </div>
 
-                    <!-- ntfy-specifika fält -->
-                    <div id="ntfy-fields" class="d-none">
-
-                        <!-- Formulärläge -->
-                        <div id="form-mode">
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Server</label>
-                                <div class="mb-2">
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="server_type" id="srv-public" value="public" checked onchange="toggleServerField()">
-                                        <label class="form-check-label" for="srv-public">ntfy.sh (publik)</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="server_type" id="srv-custom" value="custom" onchange="toggleServerField()">
-                                        <label class="form-check-label" for="srv-custom">Anpassad</label>
-                                    </div>
-                                </div>
-                                <div id="custom-server-field" class="d-none">
-                                    <input type="url" id="field-server" class="form-control form-control-sm" placeholder="https://din-server.example.com" oninput="syncFormToJson()">
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <label for="field-topic" class="form-label fw-bold">Ämne (topic)</label>
-                                <input type="text" id="field-topic" class="form-control form-control-sm" placeholder="mitt-korsord-ämne" oninput="syncFormToJson()">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Autentisering</label>
-                                <div class="mb-2">
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="auth_type" id="auth-none" value="none" checked onchange="toggleAuthFields()">
-                                        <label class="form-check-label" for="auth-none">Ingen</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="auth_type" id="auth-token" value="token" onchange="toggleAuthFields()">
-                                        <label class="form-check-label" for="auth-token">Token</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="auth_type" id="auth-password" value="password" onchange="toggleAuthFields()">
-                                        <label class="form-check-label" for="auth-password">Lösenord</label>
-                                    </div>
-                                </div>
-                                <div id="auth-token-field" class="d-none">
-                                    <input type="text" id="field-token" class="form-control form-control-sm font-monospace" placeholder="tk_..." oninput="syncFormToJson()">
-                                </div>
-                                <div id="auth-password-fields" class="d-none">
-                                    <div class="row g-2">
-                                        <div class="col">
-                                            <input type="text" id="field-username" class="form-control form-control-sm" placeholder="Användarnamn" oninput="syncFormToJson()">
-                                        </div>
-                                        <div class="col">
-                                            <input type="password" id="field-password" class="form-control form-control-sm" placeholder="Lösenord" oninput="syncFormToJson()">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Händelser</label>
-                                <div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="checkbox" id="ev-all-new" value="all" checked onchange="toggleAllEventsNew(this)">
-                                        <label class="form-check-label" for="ev-all-new">Alla</label>
-                                    </div>
-                                    {% for ev_key, ev_label in notification_events.items() %}
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input event-cb-new" type="checkbox" id="ev-new-{{ ev_key }}" value="{{ ev_key }}" disabled onchange="syncEventsToJson()">
-                                        <label class="form-check-label" for="ev-new-{{ ev_key }}">{{ ev_label }}</label>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
+                    {% for kind, cls in notifier_kinds.items() %}
+                    <div id="fields-{{ kind }}" class="kind-fields d-none">
+                        {% for field in cls.CONFIG_FIELDS %}
+                        <div class="mb-3">
+                            <label for="cfg-{{ kind }}-{{ field.name }}" class="form-label fw-bold">{{ field.label }}</label>
+                            
+                            {% if field.type == 'select' %}
+                            <select name="cfg_{{ field.name }}" id="cfg-{{ kind }}-{{ field.name }}" class="form-select form-select-sm">
+                                {% for opt in field.options %}
+                                <option value="{{ opt.value }}" {% if opt.value == field.default %}selected{% endif %}>{{ opt.label }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif field.type == 'password' %}
+                            <input type="password" name="cfg_{{ field.name }}" id="cfg-{{ kind }}-{{ field.name }}" 
+                                   class="form-control form-control-sm" 
+                                   placeholder="{{ field.placeholder or '' }}">
+                            <div class="form-text edit-only-help d-none">Lämna tomt för att behålla befintligt värde.</div>
+                            {% else %}
+                            <input type="text" name="cfg_{{ field.name }}" id="cfg-{{ kind }}-{{ field.name }}" 
+                                   class="form-control form-control-sm" 
+                                   value="{{ field.default or '' }}"
+                                   placeholder="{{ field.placeholder or '' }}">
+                            {% endif %}
+                            
+                            {% if field.help_text %}
+                            <div class="form-text">{{ field.help_text }}</div>
+                            {% endif %}
                         </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
 
-                        <!-- JSON-läge -->
-                        <div id="json-mode" class="d-none">
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">config_json</label>
-                                <textarea id="json-config" class="form-control font-monospace" rows="7" oninput="syncJsonToForm()" placeholder='{"server": "https://ntfy.sh", "topic": "mitt-ämne", "auth_type": "none"}'></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">events_json</label>
-                                <textarea id="json-events" class="form-control font-monospace" rows="2" oninput="syncJsonEventsToHidden()" placeholder='["all"]'></textarea>
+                    <div id="common-fields" class="d-none">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Händelser</label>
+                            <div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="ev-all-new" value="all" checked onchange="toggleAllEventsNew(this)">
+                                    <label class="form-check-label" for="ev-all-new">Alla</label>
+                                </div>
+                                {% for ev_key, ev_label in notification_events.items() %}
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input event-cb-new" type="checkbox" id="ev-new-{{ ev_key }}" value="{{ ev_key }}" disabled onchange="syncEventsToJson()">
+                                    <label class="form-check-label" for="ev-new-{{ ev_key }}">{{ ev_label }}</label>
+                                </div>
+                                {% endfor %}
                             </div>
                         </div>
 
@@ -423,50 +390,16 @@ function onEventChange(targetId) {
 
 // --- Lägg till-formulär: tjänstval ---
 function onKindChange(kind) {
-    document.getElementById('hidden-kind').value = kind;
-    document.getElementById('ntfy-fields').classList.toggle('d-none', kind !== 'ntfy');
-    document.getElementById('mode-toggle').classList.toggle('d-none', !kind);
-    if (kind === 'ntfy') syncFormToJson();
-}
-
-// --- Formulär-/JSON-läge ---
-let currentMode = 'form';
-
-function setMode(mode) {
-    currentMode = mode;
-    document.getElementById('form-mode').classList.toggle('d-none', mode !== 'form');
-    document.getElementById('json-mode').classList.toggle('d-none', mode !== 'json');
-    document.getElementById('mode-form-btn').className = mode === 'form' ? 'btn btn-primary' : 'btn btn-outline-secondary';
-    document.getElementById('mode-json-btn').className = mode === 'json' ? 'btn btn-primary' : 'btn btn-outline-secondary';
-    if (mode === 'json') {
-        syncFormToJson();
-        document.getElementById('json-config').value = document.getElementById('hidden-config-json').value;
-        document.getElementById('json-events').value = document.getElementById('hidden-events-json').value;
+    document.querySelectorAll('.kind-fields').forEach(el => el.classList.add('d-none'));
+    if (kind) {
+        const fieldDiv = document.getElementById(`fields-${kind}`);
+        if (fieldDiv) {
+            fieldDiv.classList.remove('d-none');
+            document.getElementById('common-fields').classList.remove('d-none');
+        }
+    } else {
+        document.getElementById('common-fields').classList.add('d-none');
     }
-}
-
-function getServer() {
-    const isPublic = document.getElementById('srv-public').checked;
-    return isPublic ? 'https://ntfy.sh' : (document.getElementById('field-server').value.trim() || 'https://ntfy.sh');
-}
-
-function getAuthType() {
-    return document.querySelector('input[name="auth_type"]:checked').value;
-}
-
-function syncFormToJson() {
-    const cfg = {
-        server: getServer(),
-        topic: document.getElementById('field-topic').value.trim(),
-        auth_type: getAuthType(),
-    };
-    if (cfg.auth_type === 'token') cfg.token = document.getElementById('field-token').value;
-    if (cfg.auth_type === 'password') {
-        cfg.username = document.getElementById('field-username').value;
-        cfg.password = document.getElementById('field-password').value;
-    }
-    document.getElementById('hidden-config-json').value = JSON.stringify(cfg);
-    if (currentMode === 'json') document.getElementById('json-config').value = JSON.stringify(cfg, null, 2);
 }
 
 function syncEventsToJson() {
@@ -474,45 +407,10 @@ function syncEventsToJson() {
     if (allCb.checked) { document.getElementById('hidden-events-json').value = '["all"]'; return; }
     const checked = [...document.querySelectorAll('.event-cb-new:checked')].map(cb => cb.value);
     document.getElementById('hidden-events-json').value = JSON.stringify(checked.length ? checked : ['all']);
-    if (currentMode === 'json') document.getElementById('json-events').value = document.getElementById('hidden-events-json').value;
-}
-
-function syncJsonToForm() {
-    const raw = document.getElementById('json-config').value;
-    try {
-        const cfg = JSON.parse(raw);
-        document.getElementById('hidden-config-json').value = raw;
-        if (cfg.server && cfg.server !== 'https://ntfy.sh') {
-            document.getElementById('srv-custom').checked = true;
-            document.getElementById('field-server').value = cfg.server;
-            document.getElementById('custom-server-field').classList.remove('d-none');
-        } else {
-            document.getElementById('srv-public').checked = true;
-        }
-        document.getElementById('field-topic').value = cfg.topic || '';
-        const authType = cfg.auth_type || 'none';
-        document.querySelector(`input[name="auth_type"][value="${authType}"]`).checked = true;
-        document.getElementById('field-token').value = cfg.token || '';
-        document.getElementById('field-username').value = cfg.username || '';
-        document.getElementById('field-password').value = cfg.password || '';
-        toggleAuthFields();
-    } catch(e) {}
 }
 
 function syncJsonEventsToHidden() {
     document.getElementById('hidden-events-json').value = document.getElementById('json-events').value.trim() || '["all"]';
-}
-
-function toggleServerField() {
-    document.getElementById('custom-server-field').classList.toggle('d-none', !document.getElementById('srv-custom').checked);
-    syncFormToJson();
-}
-
-function toggleAuthFields() {
-    const authType = getAuthType();
-    document.getElementById('auth-token-field').classList.toggle('d-none', authType !== 'token');
-    document.getElementById('auth-password-fields').classList.toggle('d-none', authType !== 'password');
-    syncFormToJson();
 }
 
 function toggleAllEventsNew(cb) {
@@ -521,11 +419,7 @@ function toggleAllEventsNew(cb) {
 }
 
 function formSubmit(e) {
-    if (currentMode === 'form') { syncFormToJson(); syncEventsToJson(); }
-    else {
-        document.getElementById('hidden-config-json').value = document.getElementById('json-config').value.trim() || '{}';
-        syncJsonEventsToHidden();
-    }
+    syncEventsToJson();
 }
 
 // --- Redigera i samma formulär ---
@@ -548,23 +442,20 @@ function openEditFromBtn(btn) {
     kindSelect.disabled = true;
     onKindChange(kind);
 
-    // Fyll i ntfy-fälten
-    if (kind === 'ntfy') {
-        const server = cfg.server || 'https://ntfy.sh';
-        const isCustom = server !== 'https://ntfy.sh';
-        document.getElementById('srv-public').checked = !isCustom;
-        document.getElementById('srv-custom').checked = isCustom;
-        document.getElementById('custom-server-field').classList.toggle('d-none', !isCustom);
-        document.getElementById('field-server').value = isCustom ? server : '';
-        document.getElementById('field-topic').value = cfg.topic || cfg.url || '';
-        const authType = cfg.auth_type || 'none';
-        document.querySelector(`input[name="auth_type"][value="${authType}"]`).checked = true;
-        document.getElementById('field-token').value = cfg.token || '';
-        document.getElementById('field-username').value = cfg.username || '';
-        document.getElementById('field-password').value = cfg.password || '';
-        toggleAuthFields();
-        syncFormToJson();
+    // Fyll i fälten
+    for (const [key, value] of Object.entries(cfg)) {
+        const el = document.getElementById(`cfg-${kind}-${key}`);
+        if (el) {
+            if (el.type === 'password') {
+                el.value = ''; // Lämna tomt för lösenord
+            } else {
+                el.value = value;
+            }
+        }
     }
+    
+    // Visa hjälptext för lösenord
+    document.querySelectorAll('.edit-only-help').forEach(el => el.classList.remove('d-none'));
 
     // Scrolla till formuläret
     document.getElementById('notif-form').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -576,12 +467,23 @@ function cancelEdit() {
     document.getElementById('form-submit-btn').textContent = 'Lägg till';
     document.getElementById('edit-mode-banner').classList.add('d-none');
     document.getElementById('notif-form').action = '/settings/notifications';
+    
     const kindSelect = document.getElementById('kind-select');
     kindSelect.value = '';
     kindSelect.disabled = false;
-    document.getElementById('ntfy-fields').classList.add('d-none');
-    document.getElementById('mode-toggle').classList.add('d-none');
-    document.getElementById('hidden-kind').value = '';
+    onKindChange('');
+    
+    // Rensa alla fält
+    document.querySelectorAll('.kind-fields input, .kind-fields select').forEach(el => {
+        if (el.tagName === 'SELECT') {
+            // Återställ till första option
+        } else {
+            el.value = '';
+        }
+    });
+    
+    // Dölj hjälptext för lösenord
+    document.querySelectorAll('.edit-only-help').forEach(el => el.classList.add('d-none'));
 }
 
 // --- reMarkable mappläsare ---
