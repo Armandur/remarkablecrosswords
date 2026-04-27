@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import DEFAULT_TIMEZONE, ENABLE_SCHEDULER, REMARKABLE_FOLDER
 from app.database import Crossword, Issue, Job, SessionLocal, Source, get_setting
 from app.services.notifier import get_notifiers
-from app.services.remarkable import get_remarkable_client
+from app.services.remarkable import RemarkableConflictError, get_remarkable_client
 from app.services.sources import SOURCE_KINDS
 from app.services.sources.base import ExternalIssue, NoCrosswordError
 
@@ -57,6 +57,12 @@ def sync_pending(db: Session):
             job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "\n".join(log_lines)
             any_synced = True
+        except RemarkableConflictError as e:
+            log_lines.append(str(e))
+            job.state = 'failed'
+            job.finished_at = datetime.datetime.now(datetime.UTC)
+            job.log = "\n".join(log_lines)
+            logger.warning(f"Sync conflict for crossword {cw.id}: {e}")
         except Exception as e:
             log_lines.append(traceback.format_exc())
             job.state = 'failed'
@@ -107,6 +113,12 @@ def sync_single_crossword(db: Session, crossword_id: int):
         job.finished_at = datetime.datetime.now(datetime.UTC)
         job.log = "\n".join(log_lines)
         success = True
+    except RemarkableConflictError as e:
+        log_lines.append(str(e))
+        job.state = 'failed'
+        job.finished_at = datetime.datetime.now(datetime.UTC)
+        job.log = "\n".join(log_lines)
+        logger.warning(f"Sync conflict for crossword {cw.id}: {e}")
     except Exception as e:
         log_lines.append(traceback.format_exc())
         job.state = 'failed'
@@ -151,6 +163,12 @@ def run_sync_job(crossword_id: int, job_id: int):
             job.state = 'done'
             job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "\n".join(log_lines)
+        except RemarkableConflictError as e:
+            log_lines.append(str(e))
+            job.state = 'failed'
+            job.finished_at = datetime.datetime.now(datetime.UTC)
+            job.log = "\n".join(log_lines)
+            logger.warning(f"Sync conflict for crossword {crossword_id}: {e}")
         except Exception as e:
             log_lines.append(traceback.format_exc())
             job.state = 'failed'
@@ -184,53 +202,75 @@ def run_pipeline_for_source(source_id: int):
                 Issue.source_id == source.id,
                 Issue.external_id == ext_issue.external_id
             ).first()
-            
-            if existing:
+
+            if existing and existing.state in ('downloaded', 'no_crossword'):
                 continue
 
             job = Job(kind='download', state='running', source_id=source.id)
             db.add(job)
             db.commit()
-            
+
             try:
                 pdf_path = fetcher.download(source, ext_issue)
-                
-                issue = Issue(
-                    source_id=source.id,
-                    external_id=ext_issue.external_id,
-                    name=ext_issue.name,
-                    published_at=ext_issue.published_at,
-                    pdf_path=str(pdf_path),
-                    downloaded_at=datetime.datetime.now(datetime.UTC),
-                    state='downloaded'
-                )
-                db.add(issue)
-                db.flush() # get issue.id
-                
-                cw = Crossword(
-                    issue_id=issue.id,
-                    pdf_path=str(pdf_path),
-                    extracted_at=datetime.datetime.now(datetime.UTC)
-                )
-                db.add(cw)
-                
+
+                if existing:
+                    existing.pdf_path = str(pdf_path)
+                    existing.downloaded_at = datetime.datetime.now(datetime.UTC)
+                    existing.state = 'downloaded'
+                    issue = existing
+                    cw = db.query(Crossword).filter(Crossword.issue_id == issue.id).first()
+                    if cw:
+                        cw.pdf_path = str(pdf_path)
+                        cw.extracted_at = datetime.datetime.now(datetime.UTC)
+                        cw.synced_at = None
+                    else:
+                        cw = Crossword(
+                            issue_id=issue.id,
+                            pdf_path=str(pdf_path),
+                            extracted_at=datetime.datetime.now(datetime.UTC)
+                        )
+                        db.add(cw)
+                else:
+                    issue = Issue(
+                        source_id=source.id,
+                        external_id=ext_issue.external_id,
+                        name=ext_issue.name,
+                        published_at=ext_issue.published_at,
+                        pdf_path=str(pdf_path),
+                        downloaded_at=datetime.datetime.now(datetime.UTC),
+                        state='downloaded'
+                    )
+                    db.add(issue)
+                    db.flush()
+                    cw = Crossword(
+                        issue_id=issue.id,
+                        pdf_path=str(pdf_path),
+                        extracted_at=datetime.datetime.now(datetime.UTC)
+                    )
+                    db.add(cw)
+
                 job.issue_id = issue.id
                 job.state = 'done'
                 job.finished_at = datetime.datetime.now(datetime.UTC)
                 job.log = f"Hämtad: {ext_issue.name}\nPDF: {pdf_path}"
                 new_issues_count += 1
             except NoCrosswordError as e:
-                issue = Issue(
-                    source_id=source.id,
-                    external_id=ext_issue.external_id,
-                    name=ext_issue.name,
-                    published_at=ext_issue.published_at,
-                    pdf_path=None,
-                    downloaded_at=datetime.datetime.now(datetime.UTC),
-                    state='no_crossword'
-                )
-                db.add(issue)
-                db.flush()
+                if existing:
+                    existing.state = 'no_crossword'
+                    existing.downloaded_at = datetime.datetime.now(datetime.UTC)
+                    issue = existing
+                else:
+                    issue = Issue(
+                        source_id=source.id,
+                        external_id=ext_issue.external_id,
+                        name=ext_issue.name,
+                        published_at=ext_issue.published_at,
+                        pdf_path=None,
+                        downloaded_at=datetime.datetime.now(datetime.UTC),
+                        state='no_crossword'
+                    )
+                    db.add(issue)
+                    db.flush()
                 job.issue_id = issue.id
                 job.state = 'done'
                 job.finished_at = datetime.datetime.now(datetime.UTC)
@@ -324,7 +364,49 @@ def rerender_issues_for_source(source_id: int):
     finally:
         db.close()
 
+_scheduler: BackgroundScheduler | None = None
+
+
+def sync_source_job(source: Source) -> None:
+    """Lägg till, uppdatera eller ta bort schemalagt jobb för en källa utan omstart."""
+    if _scheduler is None:
+        return
+    job_id = f"source_{source.id}"
+    if source.enabled and source.schedule_cron:
+        db = SessionLocal()
+        try:
+            tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
+        finally:
+            db.close()
+        try:
+            trigger = CronTrigger.from_crontab(source.schedule_cron, timezone=tz)
+            _scheduler.add_job(
+                run_pipeline_for_source,
+                trigger=trigger,
+                args=[source.id],
+                id=job_id,
+                replace_existing=True,
+            )
+            logger.info(f"Scheduler updated for source {source.name} ({source.id}): {source.schedule_cron}")
+        except Exception as e:
+            logger.error(f"Failed to update scheduler for source {source.id}: {e}")
+    else:
+        remove_source_job(source.id)
+
+
+def remove_source_job(source_id: int) -> None:
+    """Ta bort schemalagt jobb for en källa."""
+    if _scheduler is None:
+        return
+    try:
+        _scheduler.remove_job(f"source_{source_id}")
+        logger.info(f"Scheduler job removed for source {source_id}")
+    except Exception:
+        pass
+
+
 def setup_scheduler(app=None):
+    global _scheduler
     if not ENABLE_SCHEDULER:
         logger.info("Scheduler is disabled via ENABLE_SCHEDULER")
         return BackgroundScheduler()
@@ -332,12 +414,12 @@ def setup_scheduler(app=None):
     db = SessionLocal()
     try:
         tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
-        scheduler = BackgroundScheduler(timezone=tz)
+        _scheduler = BackgroundScheduler(timezone=tz)
         sources = db.query(Source).filter(Source.enabled == True, Source.schedule_cron != None).all()
         for source in sources:
             try:
                 trigger = CronTrigger.from_crontab(source.schedule_cron, timezone=tz)
-                scheduler.add_job(
+                _scheduler.add_job(
                     run_pipeline_for_source,
                     trigger=trigger,
                     args=[source.id],
@@ -350,6 +432,6 @@ def setup_scheduler(app=None):
     finally:
         db.close()
 
-    scheduler.start()
+    _scheduler.start()
     logger.info(f"Scheduler started with timezone {tz}")
-    return scheduler
+    return _scheduler

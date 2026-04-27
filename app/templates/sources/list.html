@@ -14,6 +14,7 @@
                         <th>Namn</th>
                         <th>Typ</th>
                         <th>Status</th>
+                        <th>Nästa körning</th>
                         <th class="text-end">Åtgärder</th>
                     </tr>
                 </thead>
@@ -21,13 +22,17 @@
                 {% for source in sources %}
                     <tr>
                         <td class="align-middle fw-bold">{{ source.name }}</td>
-                        <td class="align-middle">{{ source.kind }}</td>
+                        <td class="align-middle text-muted small">{{ source.kind }}</td>
                         <td class="align-middle">
                             {% if source.enabled %}
                                 <span class="badge bg-success">Aktiv</span>
                             {% else %}
                                 <span class="badge bg-secondary">Inaktiv</span>
                             {% endif %}
+                        </td>
+                        <td class="align-middle text-muted small"
+                            data-cron="{{ source.schedule_cron or '' }}"
+                            data-enabled="{{ 'true' if source.enabled else 'false' }}">
                         </td>
                         <td class="text-end">
                             <a href="/sources/{{ source.id }}" class="btn btn-sm btn-outline-primary">Detaljer</a>
@@ -36,7 +41,7 @@
                 {% endfor %}
                 {% if not sources %}
                     <tr>
-                        <td colspan="4" class="text-center text-muted py-4">Inga källor konfigurerade</td>
+                        <td colspan="5" class="text-center text-muted py-4">Inga källor konfigurerade</td>
                     </tr>
                 {% endif %}
                 </tbody>
@@ -44,4 +49,50 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const SERVER_TZ = {{ timezone | tojson }};
+
+    function nextRunFromCron(cron) {
+        if (!cron) return null;
+        const p = cron.trim().split(/\s+/);
+        if (p.length !== 5) return null;
+        const [min, hour, , , dow] = p;
+        const m = parseInt(min, 10), h = parseInt(hour, 10);
+        if (isNaN(m) || isNaN(h)) return null;
+        const allowedDays = dow === '*' ? null : dow.split(',').map(Number);
+        const now = new Date();
+        const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+        for (let i = 0; i < 8; i++) {
+            const d = new Date(candidate.getTime() + i * 86400000);
+            if (d <= now) continue;
+            const wd = d.getDay();
+            if (allowedDays && !allowedDays.includes(wd)) continue;
+            return d;
+        }
+        return null;
+    }
+
+    document.querySelectorAll('td[data-cron]').forEach(function (td) {
+        const cron = td.dataset.cron;
+        const enabled = td.dataset.enabled === 'true';
+        if (!cron || !enabled) {
+            td.textContent = '-';
+            return;
+        }
+        const next = nextRunFromCron(cron);
+        if (!next) {
+            td.textContent = cron;
+            return;
+        }
+        td.textContent = next.toLocaleString('sv-SE', {
+            timeZone: SERVER_TZ,
+            weekday: 'short', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    });
+})();
+</script>
 {% endblock %}

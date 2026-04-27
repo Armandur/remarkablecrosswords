@@ -31,6 +31,14 @@
                     <div class="col-sm-4 text-muted">Undermapp på reMarkable</div>
                     <div class="col-sm-8">{{ source.prefix or '-' }}</div>
                 </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Filnamnstemplate</div>
+                    <div class="col-sm-8">{% if source.filename_template %}<code>{{ source.filename_template }}</code>{% else %}<span class="text-muted">Standard ({name})</span>{% endif %}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Skriv över på reMarkable</div>
+                    <div class="col-sm-8">{% if source.overwrite %}<span class="badge bg-warning text-dark">Ja</span>{% else %}<span class="text-muted">Nej</span>{% endif %}</div>
+                </div>
 
                 <hr>
 

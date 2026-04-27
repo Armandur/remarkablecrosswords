@@ -36,6 +36,23 @@
                     </div>
 
                     <div class="mb-3">
+                        <label class="form-label">Filnamnstemplate</label>
+                        <div class="d-flex gap-2">
+                            <input type="text" name="filename_template" id="filenameTemplateInput" class="form-control" placeholder="{name}"
+                                   value="{{ source.filename_template or '' if source else '' }}">
+                            {% if source %}
+                            <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" id="filenameTestBtn">Testa</button>
+                            {% endif %}
+                        </div>
+                        <div class="form-text">
+                            Tillgängliga variabler: <code>{name}</code>, <code>{date}</code>, <code>{year}</code>, <code>{month}</code>, <code>{day}</code>, <code>{source}</code>, <code>{id}</code>.
+                            Lämna tomt för automatiskt namn.
+                        </div>
+                        <div id="filenamePreview" class="form-text mt-1 text-secondary"></div>
+                        <div id="filenameTestResult" class="mt-2 d-none"></div>
+                    </div>
+
+                    <div class="mb-3">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <label class="form-label mb-0">Schema</label>
                             <div class="form-check form-switch mb-0">
@@ -520,6 +537,73 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     toggleFields();
+
+    // Liveförhandsvisning av filnamnstemplate
+    const tmplInput = document.getElementById('filenameTemplateInput');
+    const tmplPreview = document.getElementById('filenamePreview');
+    const nameInput = document.querySelector('input[name="name"]');
+
+    function renderTemplatePreview() {
+        const tmpl = tmplInput.value.trim() || '{name}';
+        const sourceName = nameInput ? nameInput.value.trim() || 'Källnamn' : 'Källnamn';
+        const today = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const vars = {
+            name: 'Korsord ' + today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate()),
+            date: today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate()),
+            year: String(today.getFullYear()),
+            month: pad(today.getMonth() + 1),
+            day: pad(today.getDate()),
+            source: sourceName,
+            id: '12345',
+        };
+        try {
+            const result = tmpl.replace(/\{(\w+)\}/g, (_, key) => vars[key] !== undefined ? vars[key] : '{' + key + '}');
+            const sanitized = result.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/^[ .\-_–—]+|[ .\-_–—]+$/g, '') || (sourceName + '-12345');
+            tmplPreview.textContent = 'Förhandsvisning: ' + sanitized + '.pdf';
+        } catch(e) {
+            tmplPreview.textContent = '';
+        }
+    }
+
+    tmplInput.addEventListener('input', renderTemplatePreview);
+    if (nameInput) nameInput.addEventListener('input', renderTemplatePreview);
+    renderTemplatePreview();
+
+    // Testknapp — hämtar riktiga issues från servern
+    const testBtn = document.getElementById('filenameTestBtn');
+    const testResult = document.getElementById('filenameTestResult');
+    if (testBtn) {
+        testBtn.addEventListener('click', async function() {
+            const tmpl = encodeURIComponent(tmplInput.value.trim());
+            const sourceId = {{ source.id if source else 'null' }};
+            testBtn.disabled = true;
+            testBtn.textContent = '...';
+            testResult.className = 'mt-2';
+            testResult.innerHTML = '';
+            try {
+                const r = await fetch(`/sources/${sourceId}/preview-filenames?template=${tmpl}`);
+                const data = await r.json();
+                if (!data.previews || data.previews.length === 0) {
+                    testResult.innerHTML = '<p class="text-muted small mb-0">Kunde inte hämta utgåvor från källan.</p>';
+                } else {
+                    const src = data.live ? 'Live från API' : 'Från databasen';
+                    testResult.innerHTML = '<p class="small text-muted mb-1">' + src + ' — ' + data.previews.length + ' utgåvor:</p>'
+                        + '<ul class="list-unstyled mb-0">'
+                        + data.previews.map(p =>
+                            '<li class="small font-monospace text-truncate" title="' + p.issue_name.replace(/"/g, '&quot;') + '">'
+                            + p.filename.replace(/</g,'&lt;')
+                            + '</li>'
+                        ).join('')
+                        + '</ul>';
+                }
+            } catch(e) {
+                testResult.innerHTML = '<p class="text-danger small mb-0">Fel vid hämtning.</p>';
+            }
+            testBtn.disabled = false;
+            testBtn.textContent = 'Testa';
+        });
+    }
 });
 </script>
 {% endblock %}

@@ -12,6 +12,10 @@ from app.config import QUEUE_DIR, REMARKABLE_CLIENT, RMAPI_CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 
+
+class RemarkableConflictError(Exception):
+    """Uppladdning misslyckades för att filen redan finns på reMarkable."""
+
 class RemarkableClient(Protocol):
     def upload(self, pdf_path: Path, remote_folder: str, overwrite: bool = False) -> str: ...
     def ensure_folder(self, path: str) -> bool: ...
@@ -87,6 +91,11 @@ class RmapiClient:
         args.extend([str(pdf_path), remote_folder])
         res = self._run(*args)
         if res.returncode != 0:
+            if "entry already exists" in res.stderr:
+                raise RemarkableConflictError(
+                    f"Filen '{pdf_path.stem}' finns redan på reMarkable. "
+                    "Aktivera 'Skriv över' för källan om du vill ersätta den."
+                )
             raise Exception(f"rmapi upload failed: {res.stderr}")
         return f"{remote_folder}/{pdf_path.name}"
 
