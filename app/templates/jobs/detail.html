@@ -70,12 +70,9 @@
     {% for cw in crosswords %}
     <div class="col">
         <div class="card shadow-sm h-100">
-            <div class="ratio" style="--bs-aspect-ratio: 141%;">
-                <iframe src="/crosswords/{{ cw.id }}/view"
-                        style="border:0; background:#f8f9fa;"
-                        loading="lazy"
-                        title="{{ cw.pdf_path.split('/')[-1] if cw.pdf_path else 'Korsord' }}">
-                </iframe>
+            <div class="pdf-preview" data-src="/crosswords/{{ cw.id }}/view"
+                 style="overflow-y:auto;background:#f8f9fa;aspect-ratio:1/1.41;">
+                <div class="text-muted small text-center py-3">Laddar...</div>
             </div>
             <div class="card-body py-2 px-3">
                 <p class="mb-0 small text-muted text-truncate font-monospace"
@@ -96,6 +93,12 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="/static/pdf-preview.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() { initPdfPreviews(); });
+</script>
 <script>
 (function () {
     const jobId = {{ job.id }};

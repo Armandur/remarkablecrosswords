@@ -88,6 +88,8 @@ async def crosswords_page(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     synced: Optional[str] = None,
+    sort_by: Optional[str] = "date",
+    sort_dir: Optional[str] = "desc",
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -113,7 +115,13 @@ async def crosswords_page(
     elif synced == 'no':
         query = query.filter(Crossword.synced_at.is_(None))
     total = query.count()
-    rows = query.order_by(Issue.published_at.desc(), Crossword.id.desc()).offset(offset).limit(limit).all()
+    _sort_cols = {
+        "name": Issue.name, "source": Source.name,
+        "date": Issue.published_at, "synced": Crossword.synced_at,
+    }
+    _col = _sort_cols.get(sort_by, Issue.published_at)
+    _order = _col.asc() if sort_dir == "asc" else _col.desc()
+    rows = query.order_by(_order, Crossword.id.desc()).offset(offset).limit(limit).all()
     return JSONResponse({
         "total": total, "offset": offset, "limit": limit,
         "crosswords": [

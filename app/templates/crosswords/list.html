@@ -39,15 +39,29 @@
 </div>
 
 <div class="card shadow-sm mb-2">
-    <div class="card-body p-0">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+        <span class="small text-muted" id="cw-count-label"></span>
+        <div class="d-flex align-items-center gap-2">
+            <div id="size-toggle" class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" id="btn-size-sm" onclick="setSize('sm')">S</button>
+                <button class="btn btn-outline-secondary active" id="btn-size-md" onclick="setSize('md')">M</button>
+                <button class="btn btn-outline-secondary" id="btn-size-lg" onclick="setSize('lg')">L</button>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary active" id="btn-list-view" onclick="setView('list')">Lista</button>
+                <button class="btn btn-outline-secondary" id="btn-card-view" onclick="setView('card')">Kort</button>
+            </div>
+        </div>
+    </div>
+    <div id="cw-list-view" class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
-                <thead class="table-light">
+                <thead class="table-light" id="cw-thead">
                     <tr>
-                        <th>Namn</th>
-                        <th>Källa</th>
-                        <th>Datum</th>
-                        <th>Synkstatus</th>
+                        <th data-sort="name" style="cursor:pointer;user-select:none;">Namn</th>
+                        <th data-sort="source" style="cursor:pointer;user-select:none;">Källa</th>
+                        <th data-sort="date" style="cursor:pointer;user-select:none;">Datum</th>
+                        <th data-sort="synced" style="cursor:pointer;user-select:none;">Synkstatus</th>
                         <th class="text-end">Åtgärder</th>
                     </tr>
                 </thead>
@@ -57,11 +71,24 @@
             </table>
         </div>
     </div>
+    <div id="cw-card-view" class="d-none card-body">
+        <div id="card-sort-bar" class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <span class="text-muted small">Sortera:</span>
+            <button class="btn btn-sm btn-outline-secondary" data-sort="name">Namn</button>
+            <button class="btn btn-sm btn-outline-secondary" data-sort="source">Källa</button>
+            <button class="btn btn-sm btn-outline-secondary" data-sort="date">Datum</button>
+            <button class="btn btn-sm btn-outline-secondary" data-sort="synced">Synkstatus</button>
+        </div>
+        <div id="cw-card-grid" class="row g-3 row-cols-1 row-cols-md-2 row-cols-xl-3"></div>
+    </div>
 </div>
 
 <div id="crosswords-pagination" class="mt-2"></div>
 {% endblock %}
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="/static/pdf-preview.js"></script>
 <script>
 (function () {
     const params = new URLSearchParams(window.location.search);
@@ -70,28 +97,90 @@
     const fromDate = params.get('from_date') || '';
     const toDate = params.get('to_date') || '';
     const synced = params.get('synced') || '';
-    let limit = 20;
+
+    let viewMode = localStorage.getItem('cw_view_mode') || 'list';
+    let cardSize = localStorage.getItem('cw_card_size') || 'md';
+    let sortBy  = 'date';
+    let sortDir = 'desc';
+    const CARD_LIMIT = 12;
+    const GRID_CLASSES = {
+        sm: 'row g-2 row-cols-2 row-cols-md-4 row-cols-xl-6',
+        md: 'row g-3 row-cols-1 row-cols-md-2 row-cols-xl-3',
+        lg: 'row g-4 row-cols-1 row-cols-xl-2',
+    };
+
+    let limit = viewMode === 'card' ? CARD_LIMIT : 20;
     let total = 0;
-    const tbody = document.getElementById('crosswords-tbody');
-    const paginEl = document.getElementById('crosswords-pagination');
+
+    const tbody      = document.getElementById('crosswords-tbody');
+    const cardGrid   = document.getElementById('cw-card-grid');
+    const listView   = document.getElementById('cw-list-view');
+    const cardView   = document.getElementById('cw-card-view');
+    const sizeToggle = document.getElementById('size-toggle');
+    const paginEl    = document.getElementById('crosswords-pagination');
+    const countLabel = document.getElementById('cw-count-label');
+
+    const SORT_LABELS = { name: 'Namn', source: 'Källa', date: 'Datum', synced: 'Synkstatus' };
+
+    function updateSortHeaders() {
+        document.querySelectorAll('#cw-thead th[data-sort]').forEach(th => {
+            const col = th.dataset.sort;
+            const arrow = col === sortBy ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕';
+            th.textContent = SORT_LABELS[col] + arrow;
+        });
+        document.querySelectorAll('#card-sort-bar button[data-sort]').forEach(btn => {
+            const col = btn.dataset.sort;
+            const arrow = col === sortBy ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+            btn.textContent = SORT_LABELS[col] + arrow;
+            btn.classList.toggle('active', col === sortBy);
+        });
+    }
 
     function calcLimit() {
         const top = tbody.getBoundingClientRect().top;
         return Math.max(5, Math.floor((window.innerHeight - top - 80) / 47));
     }
 
-    function syncBadge(cw) {
-        if (cw.synced_at) {
-            return `<span class="badge bg-success" title="Synkad: ${new Date(cw.synced_at).toLocaleString('sv-SE')}">Synkad</span>`;
-        }
-        return '<span class="badge bg-warning text-dark">Väntar</span>';
+    function applyViewUI() {
+        const isCard = viewMode === 'card';
+        listView.classList.toggle('d-none', isCard);
+        cardView.classList.toggle('d-none', !isCard);
+        sizeToggle.classList.toggle('d-none', !isCard);
+        document.getElementById('btn-list-view').classList.toggle('active', !isCard);
+        document.getElementById('btn-card-view').classList.toggle('active', isCard);
+        cardGrid.className = GRID_CLASSES[cardSize] || GRID_CLASSES.md;
+        ['sm', 'md', 'lg'].forEach(s =>
+            document.getElementById('btn-size-' + s).classList.toggle('active', s === cardSize)
+        );
     }
+
+    window.setView = function(mode) {
+        viewMode = mode;
+        localStorage.setItem('cw_view_mode', mode);
+        limit = mode === 'card' ? CARD_LIMIT : calcLimit();
+        offset = 0;
+        applyViewUI();
+        load();
+    };
+
+    window.setSize = function(size) {
+        cardSize = size;
+        localStorage.setItem('cw_card_size', size);
+        cardGrid.className = GRID_CLASSES[size] || GRID_CLASSES.md;
+        ['sm', 'md', 'lg'].forEach(s =>
+            document.getElementById('btn-size-' + s).classList.toggle('active', s === size)
+        );
+        cardGrid.querySelectorAll('.pdf-preview[data-pdf-init]').forEach(el => {
+            delete el.dataset.pdfInit;
+            el.innerHTML = '<div class="text-muted small text-center py-3">Laddar...</div>';
+        });
+        initPdfPreviews();
+    };
 
     function renderPagination() {
         if (total <= limit) { paginEl.innerHTML = ''; return; }
         const from = offset + 1, to = Math.min(offset + limit, total);
-        const prevDisabled = offset === 0;
-        const nextDisabled = offset + limit >= total;
+        const prevDisabled = offset === 0, nextDisabled = offset + limit >= total;
         paginEl.innerHTML = `<nav><ul class="pagination justify-content-center mb-0">
             <li class="page-item ${prevDisabled ? 'disabled' : ''}">
                 <button class="page-link" onclick="cwGoTo(${Math.max(0, offset - limit)})" ${prevDisabled ? 'disabled' : ''}>Föregående</button>
@@ -103,41 +192,80 @@
         </ul></nav>`;
     }
 
+    function syncBadge(cw) {
+        return cw.synced_at
+            ? `<span class="badge bg-success" title="Synkad: ${new Date(cw.synced_at).toLocaleString('sv-SE')}">Synkad</span>`
+            : '<span class="badge bg-warning text-dark">Väntar</span>';
+    }
+
+    function renderRows(crosswords) {
+        tbody.innerHTML = crosswords.length === 0
+            ? '<tr><td colspan="5" class="text-center text-muted py-4">Inga korsord hittades</td></tr>'
+            : crosswords.map(cw => {
+                const date = cw.published_at ? new Date(cw.published_at).toLocaleDateString('sv-SE') : '-';
+                const viewBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/view" target="_blank" class="btn btn-sm btn-outline-primary">Visa</a>` : '';
+                const dlBtn   = cw.has_pdf ? `<a href="/crosswords/${cw.id}/download" class="btn btn-sm btn-outline-secondary">Ladda ned</a>` : '';
+                return `<tr>
+                    <td class="align-middle fw-bold">${cw.name}</td>
+                    <td class="align-middle">${cw.source}</td>
+                    <td class="align-middle text-muted small">${date}</td>
+                    <td class="align-middle" id="sync-status-${cw.id}">${syncBadge(cw)}</td>
+                    <td class="text-end align-middle">
+                        <div class="btn-group btn-group-sm">
+                            ${viewBtn}${dlBtn}
+                            <button type="button" class="btn btn-outline-success" onclick="syncCrossword(${cw.id}, this)">Synka</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+    }
+
+    function renderCards(crosswords) {
+        cardGrid.innerHTML = crosswords.length === 0
+            ? '<div class="col-12 text-center text-muted py-4">Inga korsord hittades</div>'
+            : crosswords.map(cw => {
+                const date = cw.published_at ? new Date(cw.published_at).toLocaleDateString('sv-SE') : '-';
+                const preview = cw.has_pdf
+                    ? `<div class="pdf-preview" data-src="/crosswords/${cw.id}/view" style="overflow-y:auto;background:#f8f9fa;aspect-ratio:1/1.41;"><div class="text-muted small text-center py-3">Laddar...</div></div>`
+                    : `<div class="d-flex align-items-center justify-content-center bg-light" style="aspect-ratio:1/1.41"><span class="text-muted small">Ingen PDF</span></div>`;
+                const viewBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/view" target="_blank" class="btn btn-sm btn-outline-primary flex-fill">Visa</a>` : '';
+                const dlBtn   = cw.has_pdf ? `<a href="/crosswords/${cw.id}/download" class="btn btn-sm btn-outline-secondary flex-fill">Ladda ned</a>` : '';
+                return `<div class="col">
+                    <div class="card h-100 shadow-sm">
+                        ${preview}
+                        <div class="card-body py-2 px-3">
+                            <div class="fw-bold small text-truncate" title="${cw.name}">${cw.name}</div>
+                            <div class="text-muted small">${cw.source} · ${date}</div>
+                            <div class="mt-1" id="sync-status-${cw.id}">${syncBadge(cw)}</div>
+                        </div>
+                        <div class="card-footer bg-white py-2 px-3 d-flex gap-1">
+                            ${viewBtn}${dlBtn}
+                            <button type="button" class="btn btn-sm btn-outline-success flex-fill" onclick="syncCrossword(${cw.id}, this)">Synka</button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+    }
+
     async function load() {
-        const newLimit = calcLimit();
-        if (newLimit !== limit) { limit = newLimit; offset = 0; }
+        if (viewMode === 'list') {
+            const newLimit = calcLimit();
+            if (newLimit !== limit) { limit = newLimit; offset = 0; }
+        }
         try {
             const url = `/crosswords/page?offset=${offset}&limit=${limit}`
                 + (sourceId ? `&source_id=${sourceId}` : '')
                 + (fromDate ? `&from_date=${fromDate}` : '')
-                + (toDate ? `&to_date=${toDate}` : '')
-                + (synced ? `&synced=${synced}` : '');
+                + (toDate   ? `&to_date=${toDate}` : '')
+                + (synced   ? `&synced=${synced}` : '')
+                + `&sort_by=${sortBy}&sort_dir=${sortDir}`;
             const r = await fetch(url);
             if (!r.ok) return;
             const data = await r.json();
             total = data.total;
-            tbody.innerHTML = data.crosswords.length === 0
-                ? '<tr><td colspan="5" class="text-center text-muted py-4">Inga korsord hittades</td></tr>'
-                : data.crosswords.map(cw => {
-                    const date = cw.published_at ? new Date(cw.published_at).toLocaleDateString('sv-SE') : '-';
-                    const syncEl = cw.synced_at
-                        ? `<span class="badge bg-success" title="Synkad: ${new Date(cw.synced_at).toLocaleString('sv-SE')}">Synkad</span>`
-                        : '<span class="badge bg-warning text-dark">Väntar</span>';
-                    const viewBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/view" target="_blank" class="btn btn-sm btn-outline-primary">Visa</a>` : '';
-                    const dlBtn = cw.has_pdf ? `<a href="/crosswords/${cw.id}/download" class="btn btn-sm btn-outline-secondary">Ladda ned</a>` : '';
-                    return `<tr>
-                        <td class="align-middle fw-bold">${cw.name}</td>
-                        <td class="align-middle">${cw.source}</td>
-                        <td class="align-middle text-muted small">${date}</td>
-                        <td class="align-middle" id="sync-status-${cw.id}">${syncEl}</td>
-                        <td class="text-end align-middle">
-                            <div class="btn-group btn-group-sm">
-                                ${viewBtn}${dlBtn}
-                                <button type="button" class="btn btn-outline-success" onclick="syncCrossword(${cw.id}, this)">Synka</button>
-                            </div>
-                        </td>
-                    </tr>`;
-                }).join('');
+            countLabel.textContent = total ? `${total} korsord` : '';
+            if (viewMode === 'card') { renderCards(data.crosswords); initPdfPreviews(); }
+            else renderRows(data.crosswords);
             renderPagination();
         } catch(e) {}
     }
@@ -150,6 +278,27 @@
         resizeTimer = setTimeout(load, 200);
     });
 
+    function handleSortClick(col) {
+        if (col === sortBy) {
+            sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortBy = col;
+            sortDir = 'desc';
+        }
+        offset = 0;
+        updateSortHeaders();
+        load();
+    }
+
+    document.querySelectorAll('#cw-thead th[data-sort]').forEach(th =>
+        th.addEventListener('click', () => handleSortClick(th.dataset.sort))
+    );
+    document.querySelectorAll('#card-sort-bar button[data-sort]').forEach(btn =>
+        btn.addEventListener('click', () => handleSortClick(btn.dataset.sort))
+    );
+
+    applyViewUI();
+    updateSortHeaders();
     load();
 })();
 
@@ -157,7 +306,6 @@ async function syncCrossword(id, btn) {
     const statusEl = document.getElementById(`sync-status-${id}`);
     if (btn) btn.disabled = true;
     statusEl.innerHTML = '<span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1" role="status"></span>Synkar...</span>';
-
     let data;
     try {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -168,10 +316,8 @@ async function syncCrossword(id, btn) {
         if (btn) btn.disabled = false;
         return;
     }
-
     const jobId = data.job_id;
     statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-warning text-dark text-decoration-none">Jobb ${jobId} körs...</a>`;
-
     const poll = setInterval(async () => {
         try {
             const r = await fetch(`/jobs/${jobId}/status`);
@@ -185,10 +331,7 @@ async function syncCrossword(id, btn) {
                 statusEl.innerHTML = `<a href="/jobs/${jobId}" class="badge bg-danger text-decoration-none text-white">Misslyckades</a>`;
                 if (btn) btn.disabled = false;
             }
-        } catch(e) {
-            clearInterval(poll);
-            if (btn) btn.disabled = false;
-        }
+        } catch(e) { clearInterval(poll); if (btn) btn.disabled = false; }
     }, 1500);
 }
 </script>
