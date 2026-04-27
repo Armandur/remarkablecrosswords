@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -20,7 +22,7 @@ class FolderBody(BaseModel):
 async def ls(path: str = "/", user=Depends(get_current_user)):
     client = get_remarkable_client()
     try:
-        items = client.ls_detailed(path)
+        items = await asyncio.to_thread(client.ls_detailed, path)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     items_sorted = sorted(items, key=lambda x: (not x["is_dir"], x["name"].lower()))
@@ -29,7 +31,7 @@ async def ls(path: str = "/", user=Depends(get_current_user)):
 @router.post("/mkdir")
 async def mkdir(body: PathBody, user=Depends(require_admin)):
     client = get_remarkable_client()
-    ok = client.ensure_folder(body.path)
+    ok = await asyncio.to_thread(client.ensure_folder, body.path)
     if not ok:
         raise HTTPException(status_code=502, detail="Kunde inte skapa mapp")
     return {"ok": True}
@@ -37,7 +39,7 @@ async def mkdir(body: PathBody, user=Depends(require_admin)):
 @router.post("/rm")
 async def rm(body: PathBody, user=Depends(require_admin)):
     client = get_remarkable_client()
-    ok = client.rm(body.path)
+    ok = await asyncio.to_thread(client.rm, body.path)
     if not ok:
         raise HTTPException(status_code=502, detail="Kunde inte ta bort")
     return {"ok": True}
