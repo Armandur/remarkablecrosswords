@@ -29,6 +29,7 @@ data/
 
 # Dev-logg (uvicorn-output)
 dev.log
+docker-compose.log
 
 # Env-filer
 .env
