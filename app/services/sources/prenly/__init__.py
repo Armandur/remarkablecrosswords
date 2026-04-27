@@ -406,6 +406,8 @@ class PrenlyFetcher(SourceFetcher):
             matched = []
             log_lines = []
             cond_str = _format_conditions(page_rules)
+            total_pdf = 0
+            log_lines.append(f"page_rules ({cond_str}): skannar {len(hashes)} sidor")
             for page_num, checksum in hashes.items():
                 try:
                     resp = download_pdf(session, conf, checksum, cdn=cdn)
@@ -414,17 +416,16 @@ class PrenlyFetcher(SourceFetcher):
                 ct = resp.headers.get("Content-Type", "").lower()
                 if "pdf" not in ct:
                     continue
+                total_pdf += 1
                 is_match = _match_page_rules(resp.content, page_rules)
-                status = "MATCH" if is_match else "ingen match"
-                log_lines.append(f"Sida {page_num}: {cond_str} → {status}")
                 if is_match:
                     matched.append(page_num)
                     writer.append(PdfReader(io.BytesIO(resp.content)))
-            
+
             if not matched:
                 raise NoCrosswordError(f"Inga sidor matchade page_rules (villkor: {cond_str})")
-            
-            log_lines.append(f"Matchade sidor: {matched}")
+
+            log_lines.append(f"Matchade {len(matched)} av {total_pdf} PDF-sidor: {matched}")
             out_path = PDF_CROSSWORDS_DIR / f"{base}-crossword.pdf"
             with open(out_path, "wb") as f:
                 writer.write(f)

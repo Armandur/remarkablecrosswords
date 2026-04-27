@@ -65,23 +65,33 @@
 </div>
 
 {% if crosswords %}
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-white">
-        <h5 class="mb-0">Behandlade filer</h5>
+<h5 class="mb-3">Behandlade filer</h5>
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
+    {% for cw in crosswords %}
+    <div class="col">
+        <div class="card shadow-sm h-100">
+            <div class="ratio" style="--bs-aspect-ratio: 141%;">
+                <iframe src="/crosswords/{{ cw.id }}/view"
+                        style="border:0; background:#f8f9fa;"
+                        loading="lazy"
+                        title="{{ cw.pdf_path.split('/')[-1] if cw.pdf_path else 'Korsord' }}">
+                </iframe>
+            </div>
+            <div class="card-body py-2 px-3">
+                <p class="mb-0 small text-muted text-truncate font-monospace"
+                   title="{{ cw.pdf_path.split('/')[-1] if cw.pdf_path else '-' }}">
+                    {{ cw.pdf_path.split('/')[-1] if cw.pdf_path else '-' }}
+                </p>
+            </div>
+            <div class="card-footer bg-white py-2 px-3 d-flex gap-2">
+                <a href="/crosswords/{{ cw.id }}/view" target="_blank"
+                   class="btn btn-sm btn-outline-primary flex-grow-1">Visa</a>
+                <a href="/crosswords/{{ cw.id }}/download"
+                   class="btn btn-sm btn-outline-secondary flex-grow-1">Ladda ned</a>
+            </div>
+        </div>
     </div>
-    <div class="card-body p-0">
-        <ul class="list-group list-group-flush">
-        {% for cw in crosswords %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span class="text-muted small font-monospace">{{ cw.pdf_path.split('/')[-1] if cw.pdf_path else '-' }}</span>
-                <div class="btn-group btn-group-sm">
-                    <a href="/crosswords/{{ cw.id }}/view" target="_blank" class="btn btn-outline-primary">Visa</a>
-                    <a href="/crosswords/{{ cw.id }}/download" class="btn btn-outline-secondary">Ladda ned</a>
-                </div>
-            </li>
-        {% endfor %}
-        </ul>
-    </div>
+    {% endfor %}
 </div>
 {% endif %}
 {% endblock %}
