@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from korsordio import fetch_competition_info, fetch_crossword, parse_name, render_pdf
 from app.config import PDF_CROSSWORDS_DIR
-from app.services.sources.base import ExternalIssue, SourceFetcher
+from app.services.sources.base import ExternalIssue, SourceFetcher, render_filename
 
 if TYPE_CHECKING:
     from app.database import Source
@@ -68,7 +68,11 @@ class KorsordioFetcher(SourceFetcher):
                 pass
 
         PDF_CROSSWORDS_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = PDF_CROSSWORDS_DIR / (meta.slug() + ".pdf")
+        if source.filename_template:
+            filename = render_filename(source.filename_template, ext_issue, source.name)
+            out_path = PDF_CROSSWORDS_DIR / f"{filename}.pdf"
+        else:
+            out_path = PDF_CROSSWORDS_DIR / (meta.slug() + ".pdf")
 
         render_pdf(data, out_path, sms_boxes=sms_boxes, competition_info=info)
 

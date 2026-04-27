@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.config import PDF_CROSSWORDS_DIR
-from app.services.sources.base import ExternalIssue, SourceFetcher
+from app.services.sources.base import ExternalIssue, SourceFetcher, render_filename
 
 if TYPE_CHECKING:
     from app.database import Source
@@ -50,7 +50,13 @@ class SRMelodikryssFetcher(SourceFetcher):
         year, week = ext_issue.external_id.split("w")
         url = _URL.format(year=int(year), week=int(week))
         PDF_CROSSWORDS_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = PDF_CROSSWORDS_DIR / f"sr-melodikryss-{ext_issue.external_id}.pdf"
+        
+        if source.filename_template:
+            filename = render_filename(source.filename_template, ext_issue, source.name)
+            out_path = PDF_CROSSWORDS_DIR / f"{filename}.pdf"
+        else:
+            out_path = PDF_CROSSWORDS_DIR / f"sr-melodikryss-{ext_issue.external_id}.pdf"
+
         with urllib.request.urlopen(url, timeout=30) as r:
             out_path.write_bytes(r.read())
         return out_path

@@ -10,7 +10,7 @@ from pypdf import PageObject, PdfReader, PdfWriter, Transformation
 from prenly_dl import download_pdf, get_hashes, get_issue_json
 
 from app.config import PDF_CROSSWORDS_DIR
-from app.services.sources.base import ExternalIssue, NoCrosswordError
+from app.services.sources.base import ExternalIssue, NoCrosswordError, render_filename
 from app.services.sources.prenly import (
     PrenlyFetcher,
     _make_conf,
@@ -276,7 +276,12 @@ class YippieHarnosandFetcher(PrenlyFetcher):
         hashes = get_hashes(data)
         page_nums = list(hashes.keys())
         PDF_CROSSWORDS_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = PDF_CROSSWORDS_DIR / f"yippie-{source.id}-{ext_issue.external_id}-crossword.pdf"
+        
+        if source.filename_template:
+            base = render_filename(source.filename_template, ext_issue, source.name)
+        else:
+            base = render_filename("{name}", ext_issue, source.name)
+        out_path = PDF_CROSSWORDS_DIR / f"{base}.pdf"
 
         for idx, page_num in enumerate(page_nums):
             checksum = hashes[page_num]

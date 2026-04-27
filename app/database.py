@@ -41,6 +41,7 @@ class Source(Base):
     enabled = Column(Boolean, default=True)
     schedule_cron = Column(String, nullable=True)
     prefix = Column(String, nullable=True)  # reMarkable-mapp under REMARKABLE_FOLDER
+    filename_template = Column(String, nullable=True)
     config_json = Column(Text, default="{}")
     overwrite = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
@@ -124,3 +125,8 @@ def init_db():
             conn.execute(text("ALTER TABLE sources ADD COLUMN overwrite BOOLEAN DEFAULT 0"))
             conn.execute(text("UPDATE sources SET overwrite = 1 WHERE json_extract(config_json, '$.overwrite') = 1"))
             conn.commit()
+        if "filename_template" not in src_cols:
+            conn.execute(text("ALTER TABLE sources ADD COLUMN filename_template TEXT"))
+            conn.commit()
+        conn.execute(text("UPDATE sources SET schedule_cron = NULL WHERE schedule_cron = 'None'"))
+        conn.commit()

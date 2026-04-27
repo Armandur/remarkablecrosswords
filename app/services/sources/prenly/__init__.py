@@ -11,7 +11,7 @@ from pypdf import PdfReader, PdfWriter
 from prenly_dl import download_pdf, get_context_token, get_hashes, get_issue_json
 
 from app.config import PDF_CROSSWORDS_DIR
-from app.services.sources.base import ExternalIssue, SourceFetcher
+from app.services.sources.base import ExternalIssue, SourceFetcher, render_filename
 
 if TYPE_CHECKING:
     from app.database import Source
@@ -306,11 +306,14 @@ class PrenlyFetcher(SourceFetcher):
             issues = []
             for item in resp.json():
                 pub = None
-                if item.get("published_at"):
-                    try:
-                        pub = datetime.fromisoformat(item["published_at"].replace(" ", "T"))
-                    except ValueError:
-                        pass
+                for date_field in ("published_at", "publication_date", "released_at", "activation_date", "valid_from", "date"):
+                    val = item.get(date_field)
+                    if val:
+                        try:
+                            pub = datetime.fromisoformat(str(val).replace(" ", "T"))
+                            break
+                        except ValueError:
+                            pass
                 issues.append(ExternalIssue(
                     external_id=str(item["uid"]),
                     name=item.get("name") or str(item["uid"]),
@@ -338,7 +341,11 @@ class PrenlyFetcher(SourceFetcher):
 
         hashes = get_hashes(data)
         PDF_CROSSWORDS_DIR.mkdir(parents=True, exist_ok=True)
-        base = f"prenly-{source.id}-{ext_issue.external_id}"
+        
+        if source.filename_template:
+            base = render_filename(source.filename_template, ext_issue, source.name)
+        else:
+            base = render_filename("{name}", ext_issue, source.name)
 
         if marker:
             # Hitta sidan med markertexten och extrahera dess inbäddade bild
