@@ -51,16 +51,16 @@ def sync_pending(db: Session):
             remote_path = client.upload(Path(cw.pdf_path), remote_folder, overwrite=overwrite)
             log_lines.append(f"Uppladdad: {remote_path}")
 
-            cw.synced_at = datetime.datetime.utcnow()
+            cw.synced_at = datetime.datetime.now(datetime.UTC)
             cw.remarkable_path = remote_path
             job.state = 'done'
-            job.finished_at = datetime.datetime.utcnow()
+            job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "\n".join(log_lines)
             any_synced = True
         except Exception as e:
             log_lines.append(traceback.format_exc())
             job.state = 'failed'
-            job.finished_at = datetime.datetime.utcnow()
+            job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "\n".join(log_lines)
             logger.exception(f"Failed to sync crossword {cw.id}: {e}")
 
@@ -101,16 +101,16 @@ def sync_single_crossword(db: Session, crossword_id: int):
         remote_path = client.upload(Path(cw.pdf_path), remote_folder)
         log_lines.append(f"Uppladdad: {remote_path}")
 
-        cw.synced_at = datetime.datetime.utcnow()
+        cw.synced_at = datetime.datetime.now(datetime.UTC)
         cw.remarkable_path = remote_path
         job.state = 'done'
-        job.finished_at = datetime.datetime.utcnow()
+        job.finished_at = datetime.datetime.now(datetime.UTC)
         job.log = "\n".join(log_lines)
         success = True
     except Exception as e:
         log_lines.append(traceback.format_exc())
         job.state = 'failed'
-        job.finished_at = datetime.datetime.utcnow()
+        job.finished_at = datetime.datetime.now(datetime.UTC)
         job.log = "\n".join(log_lines)
         logger.exception(f"Failed to sync crossword {cw.id}: {e}")
 
@@ -129,7 +129,7 @@ def run_sync_job(crossword_id: int, job_id: int):
         client = get_remarkable_client()
         if not client.check():
             job.state = 'failed'
-            job.finished_at = datetime.datetime.utcnow()
+            job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "reMarkable client check misslyckades"
             db.commit()
             return
@@ -146,15 +146,15 @@ def run_sync_job(crossword_id: int, job_id: int):
             remote_path = client.upload(Path(cw.pdf_path), remote_folder, overwrite=overwrite)
             log_lines.append(f"Uppladdad: {remote_path}")
 
-            cw.synced_at = datetime.datetime.utcnow()
+            cw.synced_at = datetime.datetime.now(datetime.UTC)
             cw.remarkable_path = remote_path
             job.state = 'done'
-            job.finished_at = datetime.datetime.utcnow()
+            job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "\n".join(log_lines)
         except Exception as e:
             log_lines.append(traceback.format_exc())
             job.state = 'failed'
-            job.finished_at = datetime.datetime.utcnow()
+            job.finished_at = datetime.datetime.now(datetime.UTC)
             job.log = "\n".join(log_lines)
             logger.exception(f"run_sync_job failed for crossword {crossword_id}: {e}")
 
@@ -201,7 +201,7 @@ def run_pipeline_for_source(source_id: int):
                     name=ext_issue.name,
                     published_at=ext_issue.published_at,
                     pdf_path=str(pdf_path),
-                    downloaded_at=datetime.datetime.utcnow(),
+                    downloaded_at=datetime.datetime.now(datetime.UTC),
                     state='downloaded'
                 )
                 db.add(issue)
@@ -210,13 +210,13 @@ def run_pipeline_for_source(source_id: int):
                 cw = Crossword(
                     issue_id=issue.id,
                     pdf_path=str(pdf_path),
-                    extracted_at=datetime.datetime.utcnow()
+                    extracted_at=datetime.datetime.now(datetime.UTC)
                 )
                 db.add(cw)
                 
                 job.issue_id = issue.id
                 job.state = 'done'
-                job.finished_at = datetime.datetime.utcnow()
+                job.finished_at = datetime.datetime.now(datetime.UTC)
                 job.log = f"Hämtad: {ext_issue.name}\nPDF: {pdf_path}"
                 new_issues_count += 1
             except NoCrosswordError as e:
@@ -226,19 +226,19 @@ def run_pipeline_for_source(source_id: int):
                     name=ext_issue.name,
                     published_at=ext_issue.published_at,
                     pdf_path=None,
-                    downloaded_at=datetime.datetime.utcnow(),
+                    downloaded_at=datetime.datetime.now(datetime.UTC),
                     state='no_crossword'
                 )
                 db.add(issue)
                 db.flush()
                 job.issue_id = issue.id
                 job.state = 'done'
-                job.finished_at = datetime.datetime.utcnow()
+                job.finished_at = datetime.datetime.now(datetime.UTC)
                 job.log = str(e)
                 logger.info(f"Issue {ext_issue.external_id} saknar korsord, hoppas över.")
             except Exception as e:
                 job.state = 'failed'
-                job.finished_at = datetime.datetime.utcnow()
+                job.finished_at = datetime.datetime.now(datetime.UTC)
                 job.log = traceback.format_exc()
                 logger.exception(f"Failed to download issue {ext_issue.external_id}: {e}")
 
@@ -247,7 +247,7 @@ def run_pipeline_for_source(source_id: int):
         synced = sync_pending(db)
 
         if synced:
-            notifiers = get_notifiers(db)
+            notifiers = get_notifiers(db, event="sync_ok")
             for n in notifiers:
                 notify_job = Job(kind='notify', state='running')
                 db.add(notify_job)
@@ -262,7 +262,7 @@ def run_pipeline_for_source(source_id: int):
                 except Exception as e:
                     notify_job.state = 'failed'
                     notify_job.log = traceback.format_exc()
-                notify_job.finished_at = datetime.datetime.utcnow()
+                notify_job.finished_at = datetime.datetime.now(datetime.UTC)
                 db.commit()
                 
     except Exception as e:
@@ -299,7 +299,7 @@ def rerender_issues_for_source(source_id: int):
                 pdf_path = fetcher.download(source, ext_issue)
                 
                 issue.pdf_path = str(pdf_path)
-                issue.downloaded_at = datetime.datetime.utcnow()
+                issue.downloaded_at = datetime.datetime.now(datetime.UTC)
                 issue.state = 'downloaded'
                 
                 cw = db.query(Crossword).filter(Crossword.issue_id == issue.id).first()
@@ -309,11 +309,11 @@ def rerender_issues_for_source(source_id: int):
                     # remarkable_path behålls avsiktligt — används av sync om overwrite är aktiverat
 
                 job.state = 'done'
-                job.finished_at = datetime.datetime.utcnow()
+                job.finished_at = datetime.datetime.now(datetime.UTC)
                 job.log = f"Renderade om: {issue.name}\nNy PDF: {pdf_path}"
             except Exception as e:
                 job.state = 'failed'
-                job.finished_at = datetime.datetime.utcnow()
+                job.finished_at = datetime.datetime.now(datetime.UTC)
                 job.log = traceback.format_exc()
                 logger.exception(f"Failed to rerender issue {issue.id}: {e}")
             

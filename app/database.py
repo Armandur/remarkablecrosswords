@@ -31,7 +31,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     is_admin = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
 
 class Source(Base):
     __tablename__ = "sources"
@@ -43,7 +43,7 @@ class Source(Base):
     prefix = Column(String, nullable=True)  # reMarkable-mapp under REMARKABLE_FOLDER
     config_json = Column(Text, default="{}")
     overwrite = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
 
 class Issue(Base):
     __tablename__ = "issues"
@@ -70,7 +70,7 @@ class Job(Base):
     __tablename__ = "jobs"
     id = Column(Integer, primary_key=True, index=True)
     kind = Column(String, nullable=False)  # download | extract | sync | notify
-    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
     finished_at = Column(DateTime, nullable=True)
     state = Column(String, nullable=False)  # running | done | failed
     log = Column(Text, nullable=True)

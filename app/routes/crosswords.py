@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import Crossword, Issue, Job, Source, get_db
 from app.deps import templates, get_current_user
 from app.scheduler import run_sync_job
+from app.csrf import CsrfProtect
 
 router = APIRouter(prefix="/crosswords", tags=["crosswords"])
 
@@ -68,7 +69,7 @@ async def list_crosswords(
     })
 
 @router.post("/{crossword_id}/sync")
-async def sync_crossword(crossword_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def sync_crossword(crossword_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), user=Depends(get_current_user), _csrf: CsrfProtect = Depends(CsrfProtect())):
     cw = db.query(Crossword).filter(Crossword.id == crossword_id).first()
     if not cw:
         return JSONResponse({"error": "not found"}, status_code=404)
@@ -129,7 +130,7 @@ async def crosswords_page(
     })
 
 @router.post("/{crossword_id}/delete")
-async def delete_crossword(crossword_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def delete_crossword(crossword_id: int, db: Session = Depends(get_db), user=Depends(get_current_user), _csrf: CsrfProtect = Depends(CsrfProtect())):
     cw = db.query(Crossword).filter(Crossword.id == crossword_id).first()
     if not cw:
         return JSONResponse({"ok": False}, status_code=404)

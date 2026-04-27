@@ -160,7 +160,8 @@ async function syncCrossword(id, btn) {
 
     let data;
     try {
-        const r = await fetch(`/crosswords/${id}/sync`, { method: 'POST' });
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        const r = await fetch(`/crosswords/${id}/sync`, { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } });
         data = await r.json();
     } catch(e) {
         statusEl.innerHTML = '<span class="badge bg-danger">Nätverksfel</span>';

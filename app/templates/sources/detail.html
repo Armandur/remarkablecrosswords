@@ -190,7 +190,8 @@ document.addEventListener('DOMContentLoaded', function() {
         statusEl.innerHTML = '<span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1"></span>Synkar...</span>';
         let data;
         try {
-            const r = await fetch(`/crosswords/${id}/sync`, { method: 'POST' });
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+            const r = await fetch(`/crosswords/${id}/sync`, { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } });
             data = await r.json();
         } catch(e) {
             statusEl.innerHTML = '<span class="badge bg-danger">Nätverksfel</span>';
@@ -220,7 +221,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!confirm('Ta bort detta korsord?')) return;
         if (btn) btn.disabled = true;
         try {
-            const r = await fetch(`/crosswords/${id}/delete`, { method: 'POST' });
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+            const r = await fetch(`/crosswords/${id}/delete`, { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } });
             if (r.ok) {
                 document.getElementById(`cw-row-${id}`)?.remove();
                 total--;

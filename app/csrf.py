@@ -17,6 +17,7 @@ def validate_csrf_token(request: Request, token: str) -> bool:
 
 class CsrfProtect:
     async def __call__(self, request: Request, csrf_token: str = Form(default='')):
-        if not validate_csrf_token(request, csrf_token):
+        token = csrf_token or request.headers.get('X-CSRF-Token', '')
+        if not validate_csrf_token(request, token):
             raise HTTPException(status_code=403, detail='Ogiltigt CSRF-token')
         return True

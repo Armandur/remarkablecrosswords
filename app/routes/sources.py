@@ -104,8 +104,9 @@ async def toggle_source(source_id: int, db: Session = Depends(get_db), user=Depe
 @router.post("/{source_id}/clear-cache")
 async def clear_source_cache(source_id: int, db: Session = Depends(get_db), user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
     issues = db.query(Issue).filter(Issue.source_id == source_id).all()
-    for issue in issues:
-        crosswords = db.query(Crossword).filter(Crossword.issue_id == issue.id).all()
+    issue_ids = [i.id for i in issues]
+    if issue_ids:
+        crosswords = db.query(Crossword).filter(Crossword.issue_id.in_(issue_ids)).all()
         for cw in crosswords:
             if cw.pdf_path:
                 try:
@@ -113,6 +114,7 @@ async def clear_source_cache(source_id: int, db: Session = Depends(get_db), user
                 except (FileNotFoundError, OSError):
                     pass
             db.delete(cw)
+    for issue in issues:
         if issue.pdf_path:
             try:
                 os.remove(issue.pdf_path)
