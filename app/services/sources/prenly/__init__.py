@@ -244,6 +244,58 @@ def _extract_image_to_bytes(
     return buf.getvalue()
 
 
+def _match_page_rules(pdf_bytes: bytes, rules: dict) -> bool:
+    """Utvärderar page_rules mot en ensidessida. Returnerar True om sidan ska inkluderas."""
+    conditions = rules.get("conditions", [])
+    match_mode = rules.get("match", "any")
+    if not conditions:
+        return False
+
+    results = []
+    for cond in conditions:
+        ctype = cond.get("type")
+        try:
+            if ctype == "text_contains":
+                reader = PdfReader(io.BytesIO(pdf_bytes))
+                text = (reader.pages[0].extract_text() or "").lower()
+                results.append(cond["text"].lower() in text)
+
+            elif ctype == "min_images":
+                pk = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+                xobjs = pk.pages[0].get("/Resources", pikepdf.Dictionary()).get("/XObject", pikepdf.Dictionary())
+                count = sum(1 for xobj in xobjs.values() if xobj.get("/Subtype") == "/Image")
+                results.append(count >= int(cond["count"]))
+
+            elif ctype == "min_image_pixels":
+                pk = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+                xobjs = pk.pages[0].get("/Resources", pikepdf.Dictionary()).get("/XObject", pikepdf.Dictionary())
+                threshold = int(cond["pixels"])
+                results.append(any(
+                    int(xobj.get("/Width", 0)) * int(xobj.get("/Height", 0)) >= threshold
+                    for xobj in xobjs.values() if xobj.get("/Subtype") == "/Image"
+                ))
+
+            elif ctype == "max_image_pixels":
+                pk = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+                xobjs = pk.pages[0].get("/Resources", pikepdf.Dictionary()).get("/XObject", pikepdf.Dictionary())
+                threshold = int(cond["pixels"])
+                results.append(all(
+                    int(xobj.get("/Width", 0)) * int(xobj.get("/Height", 0)) <= threshold
+                    for xobj in xobjs.values() if xobj.get("/Subtype") == "/Image"
+                ))
+
+            else:
+                logger.warning("Okänd regeltyp: %s", ctype)
+                results.append(False)
+        except Exception as e:
+            logger.warning("Regelutvärdering misslyckades för %s: %s", ctype, e)
+            results.append(False)
+
+    if match_mode == "all":
+        return all(results)
+    return any(results)
+
+
 def _crop_page(pdf_bytes: bytes, bbox: tuple[float, float, float, float], out_path: Path) -> Path:
     """Beskär sidan till angiven bounding box via MediaBox och sparar."""
     src = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
@@ -346,6 +398,30 @@ class PrenlyFetcher(SourceFetcher):
             base = render_filename(source.filename_template, ext_issue, source.name)
         else:
             base = render_filename("{name}", ext_issue, source.name)
+
+        page_rules: dict | None = cfg.get("page_rules")
+
+        if page_rules:
+            writer = PdfWriter()
+            matched = []
+            for page_num, checksum in hashes.items():
+                try:
+                    resp = download_pdf(session, conf, checksum, cdn=cdn)
+                except SystemExit as e:
+                    raise RuntimeError(f"Prenly download_pdf misslyckades (kod {e.code})") from e
+                ct = resp.headers.get("Content-Type", "").lower()
+                if "pdf" not in ct:
+                    continue
+                if _match_page_rules(resp.content, page_rules):
+                    logger.info("page_rules: inkluderar sida %s", page_num)
+                    matched.append(page_num)
+                    writer.append(PdfReader(io.BytesIO(resp.content)))
+            if not matched:
+                raise RuntimeError("page_rules matchade inga sidor i utgåvan")
+            out_path = PDF_CROSSWORDS_DIR / f"{base}-crossword.pdf"
+            with open(out_path, "wb") as f:
+                writer.write(f)
+            return out_path
 
         if marker:
             # Hitta sidan med markertexten och extrahera dess inbäddade bild

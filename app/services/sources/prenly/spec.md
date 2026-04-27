@@ -30,6 +30,49 @@ Hämtar tidningsnummer från Prenly-plattformen (Textalk). Använder `prenly-dl`
 | `cdn` | string | `https://mediacdn.prenly.com` | CDN-URL (valfri) |
 | `extraction_pages` | list[int] | `[]` | 1-indexerade sidnummer att extrahera till separat PDF. Tomt = hela numret. |
 | `crossword_marker_text` | string | — | Text som identifierar korsordsidan (t.ex. `"SE KRYSSET"`). När satt: sidor skannas med pypdf tills texten hittas, sedan tas overlayen bort ur innehållsströmmen (q...Q-block med `/GS2 gs` filtreras bort). Mer exakt än `extraction_pages` och bevarar sidlayouten. |
+| `page_rules` | object | — | Regelbaserad sidurvalsmotor. Sidor som matchar slås ihop till en PDF. Se nedan. |
+
+## `page_rules`-format
+
+```json
+{
+  "page_rules": {
+    "match": "any",
+    "conditions": [
+      {"type": "text_contains", "text": "korsord"},
+      {"type": "min_images", "count": 5},
+      {"type": "min_image_pixels", "pixels": 400000},
+      {"type": "max_image_pixels", "pixels": 2000000}
+    ]
+  }
+}
+```
+
+`match`: `"any"` (minst ett villkor uppfyllt) eller `"all"` (alla villkor måste uppfyllas).
+
+| Villkorstyp | Parameter | Beskrivning |
+|---|---|---|
+| `text_contains` | `text` | Sidans extraherade text innehåller strängen (skiftlägesokänsligt) |
+| `min_images` | `count` | Sidan har minst `count` inbäddade bilder |
+| `min_image_pixels` | `pixels` | Minst en bild är >= `pixels` pixlar |
+| `max_image_pixels` | `pixels` | Ingen bild är > `pixels` pixlar (utesluter fotosidor) |
+
+Prioritetsordning: `page_rules` → `crossword_marker_text` → `extraction_pages` → hela numret.
+
+### Exempel: DN kulturbilaga
+
+```json
+{
+  "site": "https://etidning.dn.se",
+  "textalk_auth": "...",
+  "auth": "...",
+  "title_id": "2359",
+  "page_rules": {
+    "match": "any",
+    "conditions": [{"type": "text_contains", "text": "korsord"}]
+  }
+}
+```
 
 ## `external_id`-format
 
