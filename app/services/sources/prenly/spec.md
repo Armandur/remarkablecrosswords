@@ -52,10 +52,11 @@ Hämtar tidningsnummer från Prenly-plattformen (Textalk). Använder `prenly-dl`
 
 | Villkorstyp | Parameter | Beskrivning |
 |---|---|---|
-| `text_contains` | `text` | Sidans extraherade text innehåller strängen (skiftlägesokänsligt) |
+| `text_contains` | `text`, `whole_word` | Sidans extraherade text innehåller strängen (skiftlägesokänsligt). Med `"whole_word": true` används ordgränser (`\b`) - matchar inte delsträngar som `korsordexp`. |
 | `min_images` | `count` | Sidan har minst `count` inbäddade bilder |
 | `min_image_pixels` | `pixels` | Minst en bild är >= `pixels` pixlar |
 | `max_image_pixels` | `pixels` | Ingen bild är > `pixels` pixlar (utesluter fotosidor) |
+| `max_images` | `count` | Sidan har högst `count` inbäddade rasterbileder |
 
 Prioritetsordning: `page_rules` → `crossword_marker_text` → `extraction_pages` → hela numret.
 
@@ -69,7 +70,9 @@ Prioritetsordning: `page_rules` → `crossword_marker_text` → `extraction_page
   "title_id": "2359",
   "page_rules": {
     "match": "any",
-    "conditions": [{"type": "text_contains", "text": "korsord"}]
+    "conditions": [
+      {"type": "text_contains", "text": "korsord", "whole_word": true}
+    ]
   }
 }
 ```

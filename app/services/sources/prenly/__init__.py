@@ -257,8 +257,13 @@ def _match_page_rules(pdf_bytes: bytes, rules: dict) -> bool:
         try:
             if ctype == "text_contains":
                 reader = PdfReader(io.BytesIO(pdf_bytes))
-                text = (reader.pages[0].extract_text() or "").lower()
-                results.append(cond["text"].lower() in text)
+                text = reader.pages[0].extract_text() or ""
+                needle = cond["text"]
+                if cond.get("whole_word"):
+                    import re
+                    results.append(bool(re.search(r"\b" + re.escape(needle) + r"\b", text, re.IGNORECASE)))
+                else:
+                    results.append(needle.lower() in text.lower())
 
             elif ctype == "min_images":
                 pk = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
@@ -283,6 +288,12 @@ def _match_page_rules(pdf_bytes: bytes, rules: dict) -> bool:
                     int(xobj.get("/Width", 0)) * int(xobj.get("/Height", 0)) <= threshold
                     for xobj in xobjs.values() if xobj.get("/Subtype") == "/Image"
                 ))
+
+            elif ctype == "max_images":
+                pk = pikepdf.Pdf.open(io.BytesIO(pdf_bytes))
+                xobjs = pk.pages[0].get("/Resources", pikepdf.Dictionary()).get("/XObject", pikepdf.Dictionary())
+                count = sum(1 for xobj in xobjs.values() if xobj.get("/Subtype") == "/Image")
+                results.append(count <= int(cond["count"]))
 
             else:
                 logger.warning("Okänd regeltyp: %s", ctype)
@@ -480,13 +491,16 @@ def _format_conditions(rules: dict) -> str:
     for c in conds:
         ctype = c.get("type")
         if ctype == "text_contains":
-            bits.append(f"text_contains({c.get('text')})")
+            suffix = ", whole_word" if c.get("whole_word") else ""
+            bits.append(f"text_contains({c.get('text')}{suffix})")
         elif ctype == "min_images":
             bits.append(f"min_images({c.get('count')})")
         elif ctype == "min_image_pixels":
             bits.append(f"min_image_pixels({c.get('pixels')})")
         elif ctype == "max_image_pixels":
             bits.append(f"max_image_pixels({c.get('pixels')})")
+        elif ctype == "max_images":
+            bits.append(f"max_images({c.get('count')})")
         else:
             bits.append(str(ctype))
     return ", ".join(bits)

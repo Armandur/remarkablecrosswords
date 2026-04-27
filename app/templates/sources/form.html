@@ -158,18 +158,31 @@
                                 <label class="form-label">CDN URL (valfri)</label>
                                 <input type="text" id="prenly_cdn" class="form-control" placeholder="https://mediacdn.prenly.com">
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Korsordsmarkör (valfri)</label>
-                                <input type="text" id="prenly_marker_text" class="form-control" placeholder="SE KRYSSET">
-                                <div class="form-text">Text som identifierar korsordsidan. Overlayen tas bort automatiskt. Har företräde framför sidnummer nedan.</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Extrahera sidor (valfri)</label>
-                                <input type="text" id="prenly_extraction_pages" class="form-control" placeholder="28, 29">
-                                <div class="form-text">Kommaseparerade sidnummer (1-indexerat). Lämna tomt för hela tidningen.</div>
-                            </div>
                         </div>
                         <input type="hidden" id="prenly_config_json_hidden">
+                    </div>
+
+                    <!-- Regelbaserat sidurval -->
+                    <div id="prenly_page_rules_section" class="card bg-light mb-3 d-none">
+                        <div class="card-body">
+                            <h5 class="card-title">Regelbaserat sidurval</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Matcha</label>
+                                <select id="prenly_pr_match" class="form-select">
+                                    <option value="any">Minst ett villkor</option>
+                                    <option value="all">Alla villkor</option>
+                                </select>
+                            </div>
+                            <div id="prenly_pr_conditions" class="mb-3">
+                                <!-- Dynamiska villkor hamnar här -->
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="prenly_pr_add">
+                                + Lägg till villkor
+                            </button>
+                            <div class="form-text mt-2">
+                                Sidor som matchar väljs ut och slås ihop till en PDF.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Generell JSON -->
@@ -414,8 +427,127 @@ document.addEventListener('DOMContentLoaded', function() {
     const pTitleId = document.getElementById('prenly_title_id');
     const pCdn = document.getElementById('prenly_cdn');
     const pBackfill = document.getElementById('prenly_backfill_limit');
-    const pMarker = document.getElementById('prenly_marker_text');
-    const pPages = document.getElementById('prenly_extraction_pages');
+
+    const pPrSection = document.getElementById('prenly_page_rules_section');
+    const pPrConditions = document.getElementById('prenly_pr_conditions');
+    const pPrMatch = document.getElementById('prenly_pr_match');
+
+    function buildConditionRow(cond) {
+        const row = document.createElement('div');
+        row.className = 'd-flex gap-2 mb-2 align-items-center';
+
+        const typeSelect = document.createElement('select');
+        typeSelect.className = 'form-select form-select-sm w-auto';
+        [
+            { value: 'text_contains', label: 'Text innehåller' },
+            { value: 'min_images', label: 'Minst antal bilder' },
+            { value: 'max_images', label: 'Högst antal bilder' },
+            { value: 'min_image_pixels', label: 'Minsta bildstorlek (px)' },
+            { value: 'max_image_pixels', label: 'Största bildstorlek (px)' }
+        ].forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            if (cond && cond.type === opt.value) o.selected = true;
+            typeSelect.appendChild(o);
+        });
+
+        const paramContainer = document.createElement('div');
+        paramContainer.className = 'd-flex gap-2 align-items-center flex-grow-1';
+
+        function updateParams() {
+            paramContainer.innerHTML = '';
+            const type = typeSelect.value;
+            if (type === 'text_contains') {
+                const textInp = document.createElement('input');
+                textInp.type = 'text';
+                textInp.className = 'form-control form-control-sm';
+                textInp.placeholder = 'Text...';
+                textInp.value = (cond && cond.type === 'text_contains' ? cond.text : '') || '';
+                textInp.addEventListener('input', updatePrenlyConfigJson);
+                paramContainer.appendChild(textInp);
+
+                const checkDiv = document.createElement('div');
+                checkDiv.className = 'form-check mb-0';
+                const check = document.createElement('input');
+                check.type = 'checkbox';
+                check.className = 'form-check-input';
+                check.id = 'ww_' + Math.random().toString(36).substr(2, 9);
+                check.checked = cond && cond.type === 'text_contains' ? !!cond.whole_word : false;
+                check.addEventListener('change', updatePrenlyConfigJson);
+                const label = document.createElement('label');
+                label.className = 'form-check-label small text-nowrap';
+                label.htmlFor = check.id;
+                label.textContent = 'Hela ord';
+                checkDiv.appendChild(check);
+                checkDiv.appendChild(label);
+                paramContainer.appendChild(checkDiv);
+            } else {
+                const numInp = document.createElement('input');
+                numInp.type = 'number';
+                numInp.className = 'form-control form-control-sm';
+                if (type.includes('pixels')) {
+                    numInp.placeholder = 'Pixlar';
+                    numInp.value = (cond && (cond.type === 'min_image_pixels' || cond.type === 'max_image_pixels') ? cond.pixels : '') || '';
+                } else {
+                    numInp.placeholder = 'Antal bilder';
+                    numInp.value = (cond && (cond.type === 'min_images' || cond.type === 'max_images') ? cond.count : '') || '';
+                }
+                numInp.addEventListener('input', updatePrenlyConfigJson);
+                paramContainer.appendChild(numInp);
+            }
+        }
+
+        typeSelect.addEventListener('change', () => {
+            updateParams();
+            updatePrenlyConfigJson();
+        });
+        updateParams();
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn-outline-danger btn-sm';
+        removeBtn.textContent = '×';
+        removeBtn.onclick = () => {
+            row.remove();
+            updatePrenlyConfigJson();
+        };
+
+        row.appendChild(typeSelect);
+        row.appendChild(paramContainer);
+        row.appendChild(removeBtn);
+        return row;
+    }
+
+    function readPageRules() {
+        const rows = pPrConditions.querySelectorAll('.d-flex');
+        const conditions = [];
+        rows.forEach(row => {
+            const type = row.querySelector('select').value;
+            const params = row.querySelector('.flex-grow-1');
+            const cond = { type };
+            if (type === 'text_contains') {
+                const txt = params.querySelector('input[type="text"]').value.trim();
+                if (!txt) return;
+                cond.text = txt;
+                cond.whole_word = params.querySelector('input[type="checkbox"]').checked;
+            } else if (type.includes('pixels')) {
+                const val = parseInt(params.querySelector('input').value, 10);
+                if (isNaN(val)) return;
+                cond.pixels = val;
+            } else {
+                const val = parseInt(params.querySelector('input').value, 10);
+                if (isNaN(val)) return;
+                cond.count = val;
+            }
+            conditions.push(cond);
+        });
+        if (conditions.length === 0) return null;
+        return {
+            match: pPrMatch.value,
+            conditions: conditions
+        };
+    }
 
     // Förifyll korsordio-fält från befintlig config
     if (_existing && kindSelect.value === 'korsordio') {
@@ -429,8 +561,13 @@ document.addEventListener('DOMContentLoaded', function() {
         pTitleId.value = _existing.title_id || '';
         pCdn.value = _existing.cdn || '';
         pBackfill.value = _existing.backfill_limit || '';
-        pMarker.value = _existing.crossword_marker_text || '';
-        pPages.value = _existing.extraction_pages ? _existing.extraction_pages.join(', ') : '';
+
+        if (_existing.page_rules) {
+            pPrMatch.value = _existing.page_rules.match || 'any';
+            (_existing.page_rules.conditions || []).forEach(c => {
+                pPrConditions.appendChild(buildConditionRow(c));
+            });
+        }
     } else if (!_existing) {
         ksSms.checked = true;
         ksComp.checked = true;
@@ -448,12 +585,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updatePrenlyConfigJson() {
         if (['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
-            const extractionPages = pPages.value.split(',')
-                .map(s => s.trim())
-                .filter(s => s !== '')
-                .map(s => parseInt(s, 10))
-                .filter(n => !isNaN(n));
-
             const config = {
                 site: pSite.value,
                 textalk_auth: pTextalkAuth.value,
@@ -463,11 +594,9 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             const bl = parseInt(pBackfill.value, 10);
             if (bl > 0) config.backfill_limit = bl;
-            if (pMarker.value.trim()) {
-                config.crossword_marker_text = pMarker.value.trim();
-            }
-            if (extractionPages.length > 0) {
-                config.extraction_pages = extractionPages;
+            const pageRules = readPageRules();
+            if (pageRules) {
+                config.page_rules = pageRules;
             }
             prenlyHiddenInput.value = JSON.stringify(config);
         }
@@ -476,6 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function toggleFields() {
         korsordioFields.classList.add('d-none');
         prenlyFields.classList.add('d-none');
+        pPrSection.classList.add('d-none');
         otherFields.classList.add('d-none');
         
         hiddenInput.removeAttribute('name');
@@ -488,9 +618,9 @@ document.addEventListener('DOMContentLoaded', function() {
             updateConfigJson();
         } else if (['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
             prenlyFields.classList.remove('d-none');
-            // Dölj markörfältet för Yippie — det är hårdkodat i fetcher:n
-            document.getElementById('prenly_marker_text').closest('.mb-3').style.display =
-                kindSelect.value === 'yippie_harnosand' ? 'none' : '';
+            if (kindSelect.value === 'prenly') {
+                pPrSection.classList.remove('d-none');
+            }
             prenlyHiddenInput.setAttribute('name', 'config_json');
             updatePrenlyConfigJson();
         } else if (kindSelect.value === 'sr_melodikryss') {
@@ -531,10 +661,16 @@ document.addEventListener('DOMContentLoaded', function() {
         el.addEventListener('input', updateConfigJson);
     });
 
-    [pSite, pTextalkAuth, pAuth, pTitleId, pCdn, pBackfill, pMarker, pPages].forEach(el => {
+    [pSite, pTextalkAuth, pAuth, pTitleId, pCdn, pBackfill].forEach(el => {
         el.addEventListener('change', updatePrenlyConfigJson);
         el.addEventListener('input', updatePrenlyConfigJson);
     });
+
+    document.getElementById('prenly_pr_add').addEventListener('click', () => {
+        pPrConditions.appendChild(buildConditionRow(null));
+        updatePrenlyConfigJson();
+    });
+    pPrMatch.addEventListener('change', updatePrenlyConfigJson);
 
     toggleFields();
 
