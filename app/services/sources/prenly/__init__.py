@@ -11,7 +11,7 @@ from pypdf import PdfReader, PdfWriter
 from prenly_dl import download_pdf, get_context_token, get_hashes, get_issue_json
 
 from app.config import PDF_CROSSWORDS_DIR
-from app.services.sources.base import ExternalIssue, SourceFetcher, render_filename
+from app.services.sources.base import ExternalIssue, NoCrosswordError, SourceFetcher, render_filename
 
 if TYPE_CHECKING:
     from app.database import Source
@@ -376,7 +376,7 @@ class PrenlyFetcher(SourceFetcher):
             logger.error("Prenly list_available misslyckades: %s", e)
             return []
 
-    def download(self, source: "Source", ext_issue: ExternalIssue) -> Path:
+    def download(self, source: "Source", ext_issue: ExternalIssue) -> tuple[Path, list[str]]:
         cfg = json.loads(source.config_json or "{}")
         cdn = cfg.get("cdn", "https://mediacdn.prenly.com")
         marker: str | None = cfg.get("crossword_marker_text")
@@ -404,6 +404,8 @@ class PrenlyFetcher(SourceFetcher):
         if page_rules:
             writer = PdfWriter()
             matched = []
+            log_lines = []
+            cond_str = _format_conditions(page_rules)
             for page_num, checksum in hashes.items():
                 try:
                     resp = download_pdf(session, conf, checksum, cdn=cdn)
@@ -412,16 +414,21 @@ class PrenlyFetcher(SourceFetcher):
                 ct = resp.headers.get("Content-Type", "").lower()
                 if "pdf" not in ct:
                     continue
-                if _match_page_rules(resp.content, page_rules):
-                    logger.info("page_rules: inkluderar sida %s", page_num)
+                is_match = _match_page_rules(resp.content, page_rules)
+                status = "MATCH" if is_match else "ingen match"
+                log_lines.append(f"Sida {page_num}: {cond_str} → {status}")
+                if is_match:
                     matched.append(page_num)
                     writer.append(PdfReader(io.BytesIO(resp.content)))
+            
             if not matched:
-                raise RuntimeError("page_rules matchade inga sidor i utgåvan")
+                raise NoCrosswordError(f"Inga sidor matchade page_rules (villkor: {cond_str})")
+            
+            log_lines.append(f"Matchade sidor: {matched}")
             out_path = PDF_CROSSWORDS_DIR / f"{base}-crossword.pdf"
             with open(out_path, "wb") as f:
                 writer.write(f)
-            return out_path
+            return out_path, log_lines
 
         if marker:
             # Hitta sidan med markertexten och extrahera dess inbäddade bild
@@ -434,7 +441,7 @@ class PrenlyFetcher(SourceFetcher):
                     continue
                 if _page_contains_text(resp.content, marker):
                     logger.info("Hittade korsordssida (sid %s) via marker '%s'", page_num, marker)
-                    return _remove_overlay_from_page(resp.content, PDF_CROSSWORDS_DIR / f"{base}-crossword.pdf")
+                    return _remove_overlay_from_page(resp.content, PDF_CROSSWORDS_DIR / f"{base}-crossword.pdf"), []
             raise RuntimeError(f"Hittade ingen sida med texten '{marker}'")
 
         # Ladda ned alla sidor och slå ihop
@@ -464,4 +471,21 @@ class PrenlyFetcher(SourceFetcher):
             with open(out_path, "wb") as f:
                 writer.write(f)
 
-        return out_path
+        return out_path, []
+
+def _format_conditions(rules: dict) -> str:
+    conds = rules.get("conditions", [])
+    bits = []
+    for c in conds:
+        ctype = c.get("type")
+        if ctype == "text_contains":
+            bits.append(f"text_contains({c.get('text')})")
+        elif ctype == "min_images":
+            bits.append(f"min_images({c.get('count')})")
+        elif ctype == "min_image_pixels":
+            bits.append(f"min_image_pixels({c.get('pixels')})")
+        elif ctype == "max_image_pixels":
+            bits.append(f"max_image_pixels({c.get('pixels')})")
+        else:
+            bits.append(str(ctype))
+    return ", ".join(bits)

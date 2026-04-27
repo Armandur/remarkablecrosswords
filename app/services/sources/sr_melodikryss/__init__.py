@@ -46,7 +46,7 @@ class SRMelodikryssFetcher(SourceFetcher):
                 pass
         return issues
 
-    def download(self, source: "Source", ext_issue: ExternalIssue) -> Path:
+    def download(self, source: "Source", ext_issue: ExternalIssue) -> tuple[Path, list[str]]:
         year, week = ext_issue.external_id.split("w")
         url = _URL.format(year=int(year), week=int(week))
         PDF_CROSSWORDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -59,4 +59,4 @@ class SRMelodikryssFetcher(SourceFetcher):
 
         with urllib.request.urlopen(url, timeout=30) as r:
             out_path.write_bytes(r.read())
-        return out_path
+        return out_path, []

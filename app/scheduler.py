@@ -211,7 +211,7 @@ def run_pipeline_for_source(source_id: int):
             db.commit()
 
             try:
-                pdf_path = fetcher.download(source, ext_issue)
+                pdf_path, fetch_log = fetcher.download(source, ext_issue)
 
                 if existing:
                     existing.pdf_path = str(pdf_path)
@@ -252,7 +252,8 @@ def run_pipeline_for_source(source_id: int):
                 job.issue_id = issue.id
                 job.state = 'done'
                 job.finished_at = datetime.datetime.now(datetime.UTC)
-                job.log = f"Hämtad: {ext_issue.name}\nPDF: {pdf_path}"
+                extra = ('\n' + '\n'.join(fetch_log)) if fetch_log else ''
+                job.log = f"Hämtad: {ext_issue.name}\nPDF: {pdf_path}{extra}"
                 new_issues_count += 1
             except NoCrosswordError as e:
                 if existing:
@@ -336,7 +337,7 @@ def rerender_issues_for_source(source_id: int):
                     published_at=issue.published_at
                 )
                 
-                pdf_path = fetcher.download(source, ext_issue)
+                pdf_path, fetch_log = fetcher.download(source, ext_issue)
                 
                 issue.pdf_path = str(pdf_path)
                 issue.downloaded_at = datetime.datetime.now(datetime.UTC)
@@ -350,7 +351,8 @@ def rerender_issues_for_source(source_id: int):
 
                 job.state = 'done'
                 job.finished_at = datetime.datetime.now(datetime.UTC)
-                job.log = f"Renderade om: {issue.name}\nNy PDF: {pdf_path}"
+                extra = ('\n' + '\n'.join(fetch_log)) if fetch_log else ''
+                job.log = f"Renderade om: {issue.name}\nNy PDF: {pdf_path}{extra}"
             except Exception as e:
                 job.state = 'failed'
                 job.finished_at = datetime.datetime.now(datetime.UTC)

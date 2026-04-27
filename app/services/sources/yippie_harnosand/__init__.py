@@ -260,7 +260,7 @@ class YippieHarnosandFetcher(PrenlyFetcher):
     - Kampanjsida (placeholder): hela sidan inlindad i overlay utan korsord → NoCrosswordError
     """
 
-    def download(self, source: "Source", ext_issue: ExternalIssue) -> Path:
+    def download(self, source: "Source", ext_issue: ExternalIssue) -> tuple[Path, list[str]]:
         cfg = json.loads(source.config_json or "{}")
         cdn = cfg.get("cdn", "https://mediacdn.prenly.com")
 
@@ -346,7 +346,7 @@ class YippieHarnosandFetcher(PrenlyFetcher):
                     else:
                         with open(out_path, "wb") as f:
                             f.write(page1_bytes)
-                    return out_path
+                    return out_path, []
 
                 logger.info(
                     "Ny layout: bilden täcker %.0f%% av sidan (utanför gammal-layout-intervall)",
@@ -361,6 +361,6 @@ class YippieHarnosandFetcher(PrenlyFetcher):
             if _page_contains_text(cleaned, _CROSSWORD_MARKER):
                 logger.info("Ny layout: '%s' kvar efter overlay-borttagning, tar bort BT-block", _CROSSWORD_MARKER)
                 _remove_marker_text_block(cleaned, out_path, _CROSSWORD_MARKER)
-            return out_path
+            return out_path, []
 
         raise NoCrosswordError(f"Inget korsord i nummer {ext_issue.external_id}")

@@ -53,5 +53,5 @@ class SourceFetcher(Protocol):
     def list_available(self, source: "Source") -> list[ExternalIssue]:
         ...
 
-    def download(self, source: "Source", ext_issue: ExternalIssue) -> Path:
+    def download(self, source: "Source", ext_issue: ExternalIssue) -> tuple[Path, list[str]]:
         ...

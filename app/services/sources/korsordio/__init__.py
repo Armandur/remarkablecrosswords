@@ -44,7 +44,7 @@ class KorsordioFetcher(SourceFetcher):
 
         return issues
 
-    def download(self, source: "Source", ext_issue: ExternalIssue) -> Path:
+    def download(self, source: "Source", ext_issue: ExternalIssue) -> tuple[Path, list[str]]:
         config = json.loads(source.config_json)
         slug = config["slug"]
         sms_boxes = config.get("sms_boxes", True)
@@ -76,4 +76,4 @@ class KorsordioFetcher(SourceFetcher):
 
         render_pdf(data, out_path, sms_boxes=sms_boxes, competition_info=info)
 
-        return out_path
+        return out_path, []
