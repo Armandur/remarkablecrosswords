@@ -1,7 +1,19 @@
+import logging
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+
+# app.* loggers behöver en egen handler — uvicorn sätter inte handlers på root-loggern
+_app_handler = logging.StreamHandler(sys.stderr)
+_app_handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+_app_logger = logging.getLogger("app")
+_app_logger.addHandler(_app_handler)
+_app_logger.setLevel(logging.INFO)
+_app_logger.propagate = False
+# pikepdf loggar traceback på ogiltig XMP-metadata i PDFer — ofarligt, tystas
+logging.getLogger("pikepdf").setLevel(logging.CRITICAL)
 
 from app.config import (
     SESSION_SECRET_KEY,
