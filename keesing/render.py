@@ -174,6 +174,20 @@ def _build_svg(root: ET.Element, ctx: _Ctx, debug: bool = False) -> str:
         for c in (root.find("grid/cells") or [])
     }
 
+    # Samla cellgränser där bindestreck ska ritas (från puzzleword-element)
+    hyphen_borders: set[tuple[tuple[int, int], tuple[int, int]]] = set()
+    for word in root.iter("word"):
+        pw = word.findtext("puzzleword") or ""
+        if "-" not in pw:
+            continue
+        wc = [(int(c.get("x")), int(c.get("y"))) for c in word.findall("cells/cell")]
+        letter_idx = 0
+        for ch in pw:
+            if ch == "-":
+                hyphen_borders.add((wc[letter_idx - 1], wc[letter_idx]))
+            else:
+                letter_idx += 1
+
     parts: list[str] = []
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -257,6 +271,28 @@ def _build_svg(root: ET.Element, ctx: _Ctx, debug: bool = False) -> str:
                 if not (0 <= adj_x < cols and 0 <= adj_y < rows):
                     continue
                 parts.extend(_draw_arrow_corner(px(adj_x), py(adj_y), cell, dirs))
+
+    # Tredje passet: bindestreck på cellgränser
+    half = cell * 0.22
+    for (x1, y1), (x2, y2) in hyphen_borders:
+        if x1 == x2:
+            # Lodrätt ord - bindestrecket är horisontellt på gränsen
+            bx = px(x1) + cell / 2
+            by_ = py(y2)
+            parts.append(
+                f'<line x1="{bx - half:.2f}" y1="{by_:.2f}" '
+                f'x2="{bx + half:.2f}" y2="{by_:.2f}" '
+                f'stroke="black" stroke-width="1.5"/>'
+            )
+        else:
+            # Vågrätt ord - bindestrecket är lodrätt på gränsen
+            bx = px(x2)
+            by_ = py(y1) + cell / 2
+            parts.append(
+                f'<line x1="{bx:.2f}" y1="{by_ - half:.2f}" '
+                f'x2="{bx:.2f}" y2="{by_ + half:.2f}" '
+                f'stroke="black" stroke-width="1.5"/>'
+            )
 
     parts.append("</svg>")
     return "\n".join(parts)
