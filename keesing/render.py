@@ -276,22 +276,22 @@ def _build_svg(root: ET.Element, ctx: _Ctx, debug: bool = False) -> str:
     half = cell * 0.22
     for (x1, y1), (x2, y2) in hyphen_borders:
         if x1 == x2:
-            # Lodrätt ord - bindestrecket är horisontellt på gränsen
+            # Lodrätt ord: vertikalt streck som korsar den horisontella cellgränsen
             bx = px(x1) + cell / 2
             by_ = py(y2)
             parts.append(
-                f'<line x1="{bx - half:.2f}" y1="{by_:.2f}" '
-                f'x2="{bx + half:.2f}" y2="{by_:.2f}" '
-                f'stroke="black" stroke-width="1.5"/>'
+                f'<line x1="{bx:.2f}" y1="{by_ - half:.2f}" '
+                f'x2="{bx:.2f}" y2="{by_ + half:.2f}" '
+                f'stroke="black" stroke-width="3.0"/>'
             )
         else:
-            # Vågrätt ord - bindestrecket är lodrätt på gränsen
+            # Vågrätt ord: horisontellt streck som korsar den vertikala cellgränsen
             bx = px(x2)
             by_ = py(y1) + cell / 2
             parts.append(
-                f'<line x1="{bx:.2f}" y1="{by_ - half:.2f}" '
-                f'x2="{bx:.2f}" y2="{by_ + half:.2f}" '
-                f'stroke="black" stroke-width="1.5"/>'
+                f'<line x1="{bx - half:.2f}" y1="{by_:.2f}" '
+                f'x2="{bx + half:.2f}" y2="{by_:.2f}" '
+                f'stroke="black" stroke-width="3.0"/>'
             )
 
     parts.append("</svg>")
