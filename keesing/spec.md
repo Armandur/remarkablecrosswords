@@ -101,6 +101,29 @@ Renderingen visar:
 - Quiz-referensrutan: ljusgul bakgrund + röd fylld cirkel med vitt nummer
 - Svarcellerna: ljusgul bakgrund (oavsett om de är fillable i grid eller ej)
 
+#### Stig-celler för sentencearrow (bildpil)
+Vissa pusslar har `fillable=1`-celler med en clue vars `arrow`-attribut börjar på
+`sentencearrow` (t.ex. `sentencearrowdoubledownright`). Dessa är **inte** svarsceller
+utan pilceller som visar vägen från bildytan till svarsrutorna i `<sentences>`.
+
+I originalet visas en stor röd fet pil. Pilens riktning (t.ex. `["down", "right"]`)
+och eventuella mellanceller (celler utan clue ovanför/till vänster om hörncellen)
+bildar tillsammans en L-formad pilstig.
+
+| Egenskap | Värde |
+|----------|-------|
+| `fillable` | `1` (trots att det inte är en svarscell) |
+| `iscluecell` | `0` |
+| clue arrow | börjar med `sentencearrow`, t.ex. `sentencearrowdoubledownright` |
+| clue text | tom/whitespace |
+
+Renderingen:
+- Vit bakgrund (ej gul - de är inte svarsceller)
+- En enda sammansatt röd L-pil ritas över alla stig-celler: från toppen av den
+  översta mellancellen, ned till hörncellen, och sedan åt sidan med pilhuvud
+- Mellanceller (mellan bildkanten och hörncellen) identifieras genom att gå bakåt
+  längs `dirs[0]`-riktningen tills en `visible=0`-cell (bildyta) nås
+
 ### getimage (PNG-bild)
 ```
 GET /content/getimage?clientid={clientid}&puzzleid={puzzleid}

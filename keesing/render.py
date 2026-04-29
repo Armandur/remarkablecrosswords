@@ -296,6 +296,45 @@ def _fit_text(
         return (size_a, lines_a) if size_a >= size_b else (size_b, lines_b)
 
 
+def _draw_combined_sentence_arrow(
+    start_cx: float, start_cy: float,
+    corner_cx: float, corner_cy: float,
+    cell: int, dirs: list[str],
+) -> list[str]:
+    """Stor röd L-pil från start_cell till hörncell, sträcker sig över alla mellanceller."""
+    parts: list[str] = []
+    sw = max(2.5, cell * 0.08)
+    color = "#cc2200"
+    ah = cell * 0.22
+
+    d0, d1 = dirs[0], dirs[1] if len(dirs) >= 2 else (dirs[0], "")
+
+    if d0 == "down" and d1 == "right":
+        # Vertikal del: från topp av start_cell till mitten av hörncell
+        stem_x = corner_cx + cell / 2
+        vert_top = start_cy + cell * 0.07
+        turn_y = corner_cy + cell / 2
+        parts.append(
+            f'<line x1="{stem_x:.1f}" y1="{vert_top:.1f}" '
+            f'x2="{stem_x:.1f}" y2="{turn_y:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        # Horisontell del med pilhuvud
+        horiz_end = corner_cx + cell * 0.73
+        parts.append(
+            f'<line x1="{stem_x:.1f}" y1="{turn_y:.1f}" '
+            f'x2="{horiz_end:.1f}" y2="{turn_y:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        ax = corner_cx + cell * 0.94
+        parts.append(
+            f'<polygon points="{horiz_end:.1f},{turn_y-ah:.1f} '
+            f'{horiz_end:.1f},{turn_y+ah:.1f} {ax:.1f},{turn_y:.1f}" '
+            f'fill="{color}"/>'
+        )
+    return parts
+
+
 def _quiz_number(clues: list[ET.Element]) -> int | None:
     """Returnerar quiz-numret om cellen är en Quiz_RedCircle-referens, annars None."""
     for cl in clues:
@@ -356,6 +395,31 @@ def _build_svg(
         for word in sent.findall("word"):
             for sc in word.findall("cell"):
                 sentence_cells.add((int(sc.get("x")), int(sc.get("y"))))
+
+    # Stig-celler för sentencearrow: fillable-celler med sentencearrow-clue visar
+    # vägen från bildytan till svarsrutorna. Renderas med vit bakgrund + stor röd pil.
+    sentence_path_arrows: dict[tuple[int, int], list[str]] = {}
+    for (cx_c, cy_c), c_elem in cells.items():
+        if c_elem.get("fillable") != "1":
+            continue
+        for clue in c_elem.findall("clue"):
+            arrow = (clue.get("arrow") or "").lower().strip()
+            if not arrow.startswith("sentencearrow"):
+                continue
+            _, dirs = ARROW_DEFS.get(arrow, ("full", ["down", "right"]))
+            sentence_path_arrows[(cx_c, cy_c)] = dirs
+            # Gå bakåt längs första riktningen för att hitta mellanceller
+            if dirs:
+                ddx, ddy = _DIR_DELTA.get(dirs[0], (0, 0))
+                rx, ry = cx_c - ddx, cy_c - ddy
+                while 0 <= rx < cols and 0 <= ry < rows:
+                    ic = cells.get((rx, ry))
+                    if ic is None or ic.get("visible") == "0":
+                        break
+                    if (rx, ry) not in sentence_path_arrows:
+                        sentence_path_arrows[(rx, ry)] = [dirs[0]]
+                    rx -= ddx
+                    ry -= ddy
 
     # Samla cellgränser där bindestreck ska ritas (från puzzleword-element)
     hyphen_borders: set[tuple[tuple[int, int], tuple[int, int]]] = set()
@@ -440,10 +504,17 @@ def _build_svg(
                 and c.get("arrownumber") is not None
             )
 
+            is_path_cell = (x, y) in sentence_path_arrows
+
             if is_sentence_cell:
                 parts.append(
                     f'<rect x="{cx}" y="{cy}" width="{cell}" height="{cell}" '
                     f'fill="{SENTENCE_BG}" stroke="black" stroke-width="{STROKE}"/>'
+                )
+            elif is_path_cell:
+                parts.append(
+                    f'<rect x="{cx}" y="{cy}" width="{cell}" height="{cell}" '
+                    f'fill="white" stroke="black" stroke-width="{STROKE}"/>'
                 )
             elif fillable:
                 parts.append(
@@ -493,7 +564,24 @@ def _build_svg(
                     f'text-anchor="end">{x},{y}</text>'
                 )
 
-    # Andra passet: pilar i angränsande svarsceller
+    # Andra passet: kombinerade sentencearrow-pilar (en pil per hörncell, sträcker sig över mellanceller)
+    for (corner_x, corner_y), dirs in sentence_path_arrows.items():
+        if len(dirs) < 2:
+            continue  # mellanceller ritas av sin hörncell
+        d0 = dirs[0]
+        ddx, ddy = _DIR_DELTA.get(d0, (0, 0))
+        # Hitta alla mellanceller längs d0-riktningen bakåt från hörnet
+        rx, ry = corner_x - ddx, corner_y - ddy
+        start_x, start_y = corner_x, corner_y
+        while (rx, ry) in sentence_path_arrows and sentence_path_arrows[(rx, ry)] == [d0]:
+            start_x, start_y = rx, ry
+            rx -= ddx
+            ry -= ddy
+        parts.extend(_draw_combined_sentence_arrow(
+            px(start_x), py(start_y), px(corner_x), py(corner_y), cell, dirs
+        ))
+
+    # Tredje passet: pilar i angränsande svarsceller
     for y in range(rows):
         for x in range(cols):
             c = cells.get((x, y))
