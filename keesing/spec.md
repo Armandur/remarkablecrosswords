@@ -13,12 +13,17 @@ bilderna - de är tillgängliga direkt via HTTP.
 
 ## Klient-ID:n
 
-| Utgivare | client_id | Gametype |
-|----------|-----------|----------|
-| Dagens Nyheter | `dnmag` | `arrowword_plus` |
-| Söndagskrysset (DN) | `dnmag` | `arrowword_plus` (slot x9) |
+| Utgivare | client_id | Gametype | Slots |
+|----------|-----------|----------|-------|
+| Dagens Nyheter | `dnmag` | `arrowword_plus` | x1-x9 |
+| Söndagskrysset (DN) | `dnmag` | `arrowword_plus` | x9 |
+| Bonnier News (pool) | `bn` | `arrowword_plus` | x1-x29+ |
 
-Andra utgivare på playpuzzlesonline.com har egna `client_id`:n.
+**Portal-URL:** `https://portal.braintainment.com/{client_id}/?gametype={gametype}&puzzleid={gametype}_{slot}_today`
+
+`bn` är en gemensam pool för hela Bonnier News-nätverket (Expressen, Sydsvenskan, Ångermanland m.fl.).
+Varje tidning har ett eller flera dedikerade slots. Slot-nummer framgår av portalsidans `puzzleid`-parameter.
+Titelfältet i XML är alltid tomt för `bn` (liksom för `dnmag`) - ingen XML-metadata avslöjar vilken tidning sloten tillhör.
 
 ## API-endpoints
 
