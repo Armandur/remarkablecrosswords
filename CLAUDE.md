@@ -19,14 +19,16 @@
   - `services/`: Affärslogik (remarkable integration, notifieringar)
   - `templates/`: Jinja2 templates för webbgränssnittet
 - `korsordio/`: Fristående modul för hämtning och rendering av korsord (rör ej).
+- `keesing/`: Fristående modul för hämtning och rendering av Keesing Arrowword DPG-korsord (playpuzzlesonline.com). Avsedd att på sikt brytas ut som eget repo, likt korsordio.
 - `static/`: Statiska filer (CSS, JS)
 - `data/`: Databas och lokal lagring (gitignored)
 
 ## Viktiga designbeslut
 1. **korsordio-modulen:** Denna modul är självständig och fungerar som ett bibliotek. Modifiera inte dess interna logik såvida det inte är absolut nödvändigt.
-2. **SOURCE_KINDS:** Registreras i `app/services/sources/__init__.py`. För att lägga till en ny källa, implementera `SourceFetcher`-protokollet och lägg till den i mappen `app/services/sources/`.
-3. **RemarkableClient:** Ett interface (`Protocol`) som tillåter olika implementations (t.ex. `RmapiClient` för cloud-sync eller `LocalQueueClient` för lokal filflytt).
-4. **ENABLE_SCHEDULER:** Bör vara `false` under aktiv utveckling för att undvika oväntade bakgrundsjobb.
+2. **keesing-modulen:** Självständig modul, samma princip som korsordio. Modifiera inte dess interna logik. Avsedd att på sikt bli ett eget paket.
+3. **SOURCE_KINDS:** Registreras i `app/services/sources/__init__.py`. För att lägga till en ny källa, implementera `SourceFetcher`-protokollet och lägg till den i mappen `app/services/sources/`.
+4. **RemarkableClient:** Ett interface (`Protocol`) som tillåter olika implementations (t.ex. `RmapiClient` för cloud-sync eller `LocalQueueClient` för lokal filflytt).
+5. **ENABLE_SCHEDULER:** Bör vara `false` under aktiv utveckling för att undvika oväntade bakgrundsjobb.
 
 ## rmapi-quirks
 
@@ -41,6 +43,55 @@
 ## Vanliga uppgifter
 - **Lägga till ny Notifier:** Skapa en ny klass i `app/services/notifier.py` och registrera den i `get_notifiers()`.
 - **Lägga till ny SourceFetcher:** Implementera klassen i `app/services/sources/` och uppdatera `SOURCE_KINDS` i `__init__.py`.
+
+## Keesing-renderaren - testning och visuell granskning
+
+Testfiler för `keesing/`-modulen synkas till `/mnt/vmworkspace/keesing/<timestamp>/` så att
+renderingar kan granskas från hosten. Varje testkörning läggs i en ny datumstämplad mapp -
+gallring sköts manuellt.
+
+Varje testkörning ska innehålla **fem filer per slot**:
+1. `<slot>.svg` - renderad SVG utan debug
+2. `<slot>.pdf` - renderad PDF utan debug
+3. `<slot>_debug.svg` - renderad SVG med `debug=True` (koordinater i varje ruta)
+4. `<slot>_debug.pdf` - renderad PDF med `debug=True`
+5. `<slot>_original.png` - råbilden från `getimage`-API:et (jämförelsebild)
+
+Skript för att köra en testkörning och synka:
+
+```bash
+uv run python - <<'EOF'
+import pathlib
+from datetime import datetime
+from keesing.fetch import fetch_puzzle, SESSION
+from keesing.render import render_svg, render_pdf
+
+outdir = pathlib.Path(f"/mnt/vmworkspace/keesing/{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+outdir.mkdir(parents=True, exist_ok=True)
+
+for slot in ["x1", "x3", "x8"]:
+    r = fetch_puzzle("dnmag", "arrowword_plus", slot)
+    if not r:
+        print(f"{slot}: inte tillgänglig")
+        continue
+    info = SESSION.get(
+        f"https://web.keesing.com/Content/GetPuzzleInfo?clientid=dnmag&puzzleid=arrowword_plus_{slot}_today_&epochtime=1",
+        timeout=15,
+    ).json()
+    kse_id = info["puzzleID"]
+    xml_bytes = SESSION.get(f"https://web.keesing.com/content/getxml?clientid=dnmag&puzzleid={kse_id}", timeout=15).content
+    png_bytes = SESSION.get(f"https://web.keesing.com/content/getimage?clientid=dnmag&puzzleid={kse_id}", timeout=30).content
+
+    (outdir / f"{slot}_original.png").write_bytes(png_bytes)
+    (outdir / f"{slot}.svg").write_text(render_svg(xml_bytes, image_bytes=png_bytes, date_str=str(r.published_at)))
+    (outdir / f"{slot}_debug.svg").write_text(render_svg(xml_bytes, image_bytes=png_bytes, date_str=str(r.published_at), debug=True))
+    render_pdf(xml_bytes, outdir / f"{slot}.pdf", image_bytes=png_bytes, date_str=str(r.published_at))
+    render_pdf(xml_bytes, outdir / f"{slot}_debug.pdf", image_bytes=png_bytes, date_str=str(r.published_at), debug=True)
+    print(f"{slot}: {r.published_at}  {r.title}  -> {outdir.name}/")
+
+print("Klar:", outdir)
+EOF
+```
 
 ## Verifiering
 Kör följande för att snabbt verifiera att applikationen kan starta:

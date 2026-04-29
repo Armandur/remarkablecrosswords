@@ -47,15 +47,59 @@ GET /content/getxml?clientid={clientid}&puzzleid={puzzleid}
 ```
 Returnerar UTF-8 XML med BOM. Relevant data:
 ```xml
-<puzzle id="KSE-..." variation="Arrowword DPG" ...>
+<puzzle id="KSE-..." variation="Arrowword DPG" width="15" height="19" ...>
   <title>Måndagskrysset</title>
   <byline>Lina Otterdahl</byline>
-  ...
+  <grid>
+    <cells>
+      <cell x="0" y="0" visible="1" fillable="1" iscluecell="0" .../>
+      <cell x="1" y="0" visible="0" .../>   ← osynlig = del av bildytan
+      <cell x="2" y="0" visible="1" fillable="0" iscluecell="1" ...>
+        <clue arrow="arrowdown" groupindex="1" wordindex="3">ledtrådstext</clue>
+      </cell>
+      ...
+    </cells>
+  </grid>
+  <sentences>
+    <sentence groupid="..." length="5" content="TAPIR">
+      <word content="TAPIR" length="5">
+        <cell x="4" y="8"/>
+        <cell x="4" y="9"/>
+        ...
+      </word>
+    </sentence>
+  </sentences>
 </puzzle>
 ```
-- `title` ger publik rubrik (t.ex. "Måndagskrysset").
-- `variation` ger pussel-typ (t.ex. "Arrowword DPG", "PuzzleConstruction Arrowword").
-- Vissa pussel saknar titel (bildkorsord, Kulturbilagan) - fall back på variation.
+
+#### Celltyper
+| fillable | iscluecell | visible | Typ |
+|----------|------------|---------|-----|
+| 1 | 0 | 1 | Svarscell (vit, fylls av spelaren) |
+| 0 | 1 | 1 | Ledtrådsruta (grå, innehåller clue-element med text och pil) |
+| 0 | 0 | 0 | Bildyta (osynlig, täcks av getimage-bilden) |
+| 0 | 0 | 1 | Svart ruta |
+
+#### Clue-element
+```xml
+<clue arrow="arrowdownright" groupindex="2" wordindex="5">ledtrådstext</clue>
+```
+- `arrow`: piltyp, se Pilrendering nedan
+- `groupindex`: 1 = vågrätt, 2 = lodrätt
+- `wordindex`: löpnummer inom gruppen
+- Text: ledtråden. `\` i texten markerar stavelsegränser/radbrytningspunkter.
+- Special: `Quiz_RedCircle_N.ai` = quiz-referensruta (se Quiz-celler nedan)
+
+#### Quiz-celler (bildfrågeceller)
+Celler med clue-text `Quiz_RedCircle_N.ai` är referenser till bildgåtor.
+Numret N (1-indexerat) matchar positionen i `<sentences>`-listan.
+
+Svarcellerna för quiz-gåtan definieras i `<sentences>`, **inte** i `<grid>`.
+De kan finnas som `fillable=1`-celler i grid (x3) eller saknas helt (x1).
+
+Renderingen visar:
+- Quiz-referensrutan: ljusgul bakgrund + röd fylld cirkel med vitt nummer
+- Svarcellerna: ljusgul bakgrund (oavsett om de är fillable i grid eller ej)
 
 ### getimage (PNG-bild)
 ```
@@ -63,26 +107,8 @@ GET /content/getimage?clientid={clientid}&puzzleid={puzzleid}
 ```
 Returnerar `image/png`. Storlek varierar: 300 KB - 1,7 MB.
 
-### getsecondimage (kompletterande bild, används av Skillnad-pussel)
-```
-GET /content/getsecondimage?clientid={clientid}&puzzleid={puzzleid}
-```
-
-### getpreviewimage (miniatyrbild)
-```
-GET /content/getpreviewimage?clientid={clientid}&puzzleid={puzzleid}
-```
-
-### Övriga (ej relevanta för hämtning)
-- `GET /content/getxml` - full XML inkl. lösning
-- `POST /Content/setpuzzlestate` - spara spelläge
-- `GET /Content/GetPuzzleState` - hämta spelläge
-- `GET /Content/FinishedPuzzle` - markera klart
-- `GET /Content/StartedPuzzle` - markera påbörjat
-- `GET /content/isvalidword` - ordvalidering
-- `GET /Content/GetClientCssJSON?clientid={id}` - CSS-konfig (tom för dnmag)
-- `POST https://appservices.keesing.com/hsc` - high scores
-- `GET https://appservices.keesing.com/highscores/List` - lista high scores
+Bilden täcker hela gridytan. Osynliga celler (`visible=0`) i grid definierar
+bounding box för bilden - den klistras in där.
 
 ## Pussel-ID:n och slots
 
@@ -90,117 +116,48 @@ GET /content/getpreviewimage?clientid={clientid}&puzzleid={puzzleid}
 ```
 {gametype}_x{N}_today_
 ```
-Notera det avslutande understrecket - bundlen lägger på det automatiskt.
-Utan understrecket fungerar inte API-anropen.
-
-För `dnmag`/`arrowword_plus` finns 9 aktiva slots (2026-04-27, måndag):
-
-| Slot | KSE-ID | Datum | Titel | Variation |
-|------|--------|-------|-------|-----------|
-| x1 | KSE-11360886 | 2026-04-27 | Måndagskrysset | Arrowword DPG |
-| x2 | KSE-11361416 | 2026-04-28 | Tisdagskrysset | Arrowword DPG |
-| x3 | KSE-11358388 | 2026-04-22 | Onsdagskrysset | Arrowword DPG |
-| x4 | KSE-11365087 | 2026-04-23 | Torsdagskrysset | PuzzleConstruction Arrowword |
-| x5 | KSE-11366008 | 2026-04-24 | Nutidskrysset | PuzzleConstruction Arrowword |
-| x6 | KSE-11356612 | 2026-04-25 | (tom) | Arrowword Pictorial |
-| x7 | KSE-11361364 | 2026-04-25 | Lördagskrysset | PuzzleConstruction Arrowword |
-| x8 | KSE-11356338 | 2026-04-26 | (tom) | Arrowword DPG |
-| x9 | KSE-11374193 | 2026-04-26 | Söndagskrysset | PuzzleConstruction Arrowword |
-| x10+ | - | - | inte tillgänglig | - |
+Notera det avslutande understrecket. För `dnmag`/`arrowword_plus` finns 9 aktiva slots.
 
 **Rullande fönster:** `_today_`-aliasen ger alltid det senast tillgängliga
-pusslet per slot. På en måndag:
-- Innevarande veckas måndag (x1), tisdag (x2) är tillgängliga
-- Föregående veckas onsdag-söndag (x3-x9) finns kvar
-- Ungefär 7-9 dagars bakåtrullning, men inte exakt
+pusslet per slot - ungefär 7-9 dagars bakåtrullning.
 
-**Duplikat-kontroll:** x6 och x7 delade datum (2026-04-25) men hade olika
-KSE-ID och varierande titlar - kontrollera alltid KSE-ID för att undvika
-dubbellagring.
-
-### Direkta KSE-ID:n
-`GetPuzzleInfo` och `getimage` accepterar `puzzleid=KSE-XXXXXXXX` direkt.
-Om ett ogiltigt KSE-ID anges returneras ett tomt svar utan puzzleType.
-
-## Backfill
-
-Backfill är **begränsad**. `_today_`-aliasen rör sig framåt i takt med
-publiceringen och ger ca 7 dagars bakåtrullning. Det finns ingen känd publik
-endpoint för att lista historiska pussel-ID:n.
-
-Strategi för ongoing-insamling:
-- Kör dagligen, hämta alla 9 slots
-- Kontrollera KSE-ID mot redan sparade - spara bara nya
-- Pusslet för "idag" finns alltid under sin respektive dag-slot
+**Duplikat-kontroll:** kontrollera alltid KSE-ID för att undvika dubbellagring.
 
 ## PDF-konvertering
 
-### Variation: Arrowword DPG (x1, x2, x3, x8)
+### Variation: Arrowword DPG
 
-XML-data räcker - ingen bild behövs. Renderaren `render_keesing.py` bygger SVG
-från XML och konverterar till PDF via `cairosvg`:
+XML-data räcker - `render_pdf(xml_bytes, output, image_bytes=png_bytes)` bygger
+SVG från XML och konverterar till PDF via cairosvg. Bild används för de osynliga
+cellerna (bildytan).
 
-```python
-from render_keesing import render_pdf, supports_xml
+Cellstorlek anpassas automatiskt för A4 (~50px för 15-kolumns-grid).
 
-xml_bytes = requests.get(f"https://web.keesing.com/content/getxml?clientid={cid}&puzzleid={kid}").content
-if supports_xml(xml_bytes):
-    render_pdf(xml_bytes, output_path)
-    # render_pdf(xml_bytes, output_path, debug=True)  # lägger till (x,y)-koordinater i varje ruta
-```
-
-Cellstorlek anpassas automatiskt för A4 (~50px för 15-kolumns-grid, ~44px för 17-kolumns).
+#### Textrendering i ledtrådsrutor
+- Uttömmande sökning över alla kombinationer av mellanslags- och stavelsesnitt
+  för maximal fontstorlek.
+- Strategi A: enbart mellanslag (hela ord). Strategi B: även stavelsesnitt
+  (pyphen + XML-tips) → bindestreck vid brott.
+- B föredras om den ger klart större font, men ej om A redan passar på en rad
+  med tillräcklig storlek, eller om A är inom 95% av B utan stavelsefragment.
 
 #### Pilrendering
+Pilindikatorerna ritas i den angränsande svarscellen (inte i ledtrådsrutan).
 
-Pilindikatorerna ritas **inte** i ledtrådsrutan utan i den angränsande svarscellen
-(den cell som pilens första riktning pekar mot). Pilen är liten och sitter i hörnet
-närmast ledtrådsrutan så att svarsrutan fortfarande är läsbar.
+| Arrow-namn | Placering |
+|------------|-----------|
+| `arrowdownright` | cellen nedanför |
+| `arrowrightdown` | cellen till höger |
+| `arrowrighttop` / `arrowrightdowntop` | cellen till höger |
+| `arrowdownbottom` / `arrowdown` | cellen nedanför |
+| `arrow4590rightdown` / `arrow4590downright` | diagonalt nedre-höger |
 
-Piltyper och deras semantik:
+### Variation: PuzzleConstruction Arrowword, Arrowword Pictorial
 
-| Arrow-namn | Första led | Andra led | Placering |
-|------------|-----------|-----------|-----------|
-| `arrowdownright` | ↓ | → | cellen nedanför |
-| `arrowrightdown` | → | ↓ | cellen till höger |
-| `arrowupright` | ↑ | → | cellen ovanför |
-| `arrow4590rightdown` | ↘ (diagonal) | ↓ | diagonalt nedre-höger |
-| `arrow4590downright` | ↘ (diagonal) | → | diagonalt nedre-höger |
-| `arrow4590upright` | ↗ (diagonal) | → | diagonalt övre-höger |
-
-Enkla riktningspilar (`arrowdown`, `arrowright` m.fl.) ritas inte - de ger ingen
-information utöver vad rutornas layout redan visar.
-
-Första ledets linje börjar halvvägs in i ledtrådsrutan och böjer av inne i svarscellen,
-med pilspetsen vid slutet av andra ledet.
-
-### Variation: PuzzleConstruction Arrowword, Arrowword Pictorial (x4, x5, x6, x7, x9)
-
-Saknar ledtrådstexter i XML - kräver getimage:
-
-```python
-import img2pdf, requests
-
-png = requests.get(f"https://web.keesing.com/content/getimage?clientid={cid}&puzzleid={kid}").content
-pdf = img2pdf.convert(png)
-```
-
-`img2pdf` bevarar originalupplösningen utan komprimering. PNG på ~1 MB
-ger PDF på liknande storlek (lossless).
-
-## Filnamnskonvention
-
-```
-{datum} - {titel}.pdf
-```
-Exempel: `2026-04-27 - Måndagskrysset.pdf`
-
-Om titel saknas (x6, x8): fall back på variation eller slot-nr.
+Saknar ledtrådstexter i XML - konverteras direkt från PNG via `img2pdf`.
 
 ## Implementationsnoter
 
 - Inget cookie/session-krav för läsoperationer
-- Ingen autentisering krävs (publik API)
-- `User-Agent`-header rekommenderas men inte obligatorisk
 - BOM (`﻿`) i XML-svaret - strip innan parse
-- `epochtime`-parametern i GetPuzzleInfo kan sättas till `1` (ignoreras)
+- `epochtime`-parametern i GetPuzzleInfo kan sättas till `1`

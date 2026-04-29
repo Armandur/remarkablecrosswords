@@ -24,7 +24,8 @@
                                 <option value="sr_melodikryss" {% if source and source.kind == 'sr_melodikryss' %}selected{% endif %}>SR Melodikryss</option>
                                 <option value="prenly" {% if source and source.kind == 'prenly' %}selected{% endif %}>Prenly</option>
                                 <option value="yippie_harnosand" {% if source and source.kind == 'yippie_harnosand' %}selected{% endif %}>Yippie Härnösand [Prenly]</option>
-                                <option value="other" {% if source and source.kind not in ('korsordio', 'sr_melodikryss', 'prenly', 'yippie_harnosand') %}selected{% endif %}>Övrigt</option>
+                                <option value="keesing" {% if source and source.kind == 'keesing' %}selected{% endif %}>Keesing (playpuzzlesonline.com)</option>
+                                <option value="other" {% if source and source.kind not in ('korsordio', 'sr_melodikryss', 'prenly', 'yippie_harnosand', 'keesing') %}selected{% endif %}>Övrigt</option>
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -115,6 +116,26 @@
                             </div>
                         </div>
                         <input type="hidden" id="config_json_hidden">
+                    </div>
+
+                    <!-- Keesing specifika fält -->
+                    <div id="keesing_fields" class="card bg-light mb-3 d-none">
+                        <div class="card-body">
+                            <h5 class="card-title">Inställningar för Keesing</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Client ID</label>
+                                <input type="text" id="ke_client_id" class="form-control" placeholder="dnmag">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Gametype</label>
+                                <input type="text" id="ke_gametype" class="form-control" placeholder="arrowword_plus">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Slots (mellanslags-separerade)</label>
+                                <input type="text" id="ke_slots" class="form-control" placeholder="x1 x2 x3 x4 x5 x6 x7 x8 x9">
+                                <div class="form-text">Hämtar en slot per dag med _today_-alias. KSE-ID kontrolleras mot befintliga för att undvika dubletter.</div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Prenly specifika fält -->
@@ -411,6 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const kindSelect = document.getElementById('kindSelect');
     const korsordioFields = document.getElementById('korsordio_fields');
     const prenlyFields = document.getElementById('prenly_fields');
+    const keesingFields = document.getElementById('keesing_fields');
     const otherFields = document.getElementById('other_fields');
 
     const hiddenInput = document.getElementById('config_json_hidden');
@@ -420,6 +442,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const ksSlug = document.getElementById('ks_slug');
     const ksSms = document.getElementById('ks_sms_boxes');
     const ksComp = document.getElementById('ks_fetch_competition');
+
+    const keClientId = document.getElementById('ke_client_id');
+    const keGametype = document.getElementById('ke_gametype');
+    const keSlots = document.getElementById('ke_slots');
 
     const pSite = document.getElementById('prenly_site');
     const pTextalkAuth = document.getElementById('prenly_textalk_auth');
@@ -520,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function readPageRules() {
-        const rows = pPrConditions.querySelectorAll('.d-flex');
+        const rows = Array.from(pPrConditions.children);
         const conditions = [];
         rows.forEach(row => {
             const type = row.querySelector('select').value;
@@ -549,11 +575,15 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // Förifyll korsordio-fält från befintlig config
+    // Förifyll kind-specifika fält från befintlig config
     if (_existing && kindSelect.value === 'korsordio') {
         ksSlug.value = _existing.slug || '';
         ksSms.checked = _existing.sms_boxes !== false;
         ksComp.checked = _existing.fetch_competition !== false;
+    } else if (_existing && kindSelect.value === 'keesing') {
+        keClientId.value = _existing.client_id || '';
+        keGametype.value = _existing.gametype || '';
+        keSlots.value = (_existing.slots || []).join(' ');
     } else if (_existing && ['prenly', 'yippie_harnosand'].includes(kindSelect.value)) {
         pSite.value = _existing.site || '';
         pTextalkAuth.value = _existing.textalk_auth || '';
@@ -580,6 +610,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 sms_boxes: ksSms.checked,
                 fetch_competition: ksComp.checked,
             });
+        } else if (kindSelect.value === 'keesing') {
+            const slots = keSlots.value.trim().split(/\s+/).filter(Boolean);
+            hiddenInput.value = JSON.stringify({
+                client_id: keClientId.value.trim() || 'dnmag',
+                gametype: keGametype.value.trim() || 'arrowword_plus',
+                slots: slots.length ? slots : ['x1','x2','x3','x4','x5','x6','x7','x8','x9'],
+            });
         }
     }
 
@@ -605,9 +642,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function toggleFields() {
         korsordioFields.classList.add('d-none');
         prenlyFields.classList.add('d-none');
+        keesingFields.classList.add('d-none');
         pPrSection.classList.add('d-none');
         otherFields.classList.add('d-none');
-        
+
         hiddenInput.removeAttribute('name');
         prenlyHiddenInput.removeAttribute('name');
         textAreaInput.removeAttribute('name');
@@ -623,6 +661,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             prenlyHiddenInput.setAttribute('name', 'config_json');
             updatePrenlyConfigJson();
+        } else if (kindSelect.value === 'keesing') {
+            keesingFields.classList.remove('d-none');
+            hiddenInput.setAttribute('name', 'config_json');
+            updateConfigJson();
         } else if (kindSelect.value === 'sr_melodikryss') {
             hiddenInput.setAttribute('name', 'config_json');
             hiddenInput.value = '{}';

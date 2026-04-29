@@ -77,6 +77,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skriv ut cell-koordinater (x,y) i varje ruta.",
     )
+    p.add_argument(
+        "--bare",
+        action="store_true",
+        help="Rendera enbart rutnätet utan rubrik och padding.",
+    )
+    p.add_argument(
+        "--date",
+        default=None,
+        metavar="DATUM",
+        help="Datum att visa i rubriken, t.ex. 2026-04-28 (används med --file).",
+    )
     return p
 
 
@@ -92,11 +103,13 @@ def main(argv: list[str] | None = None) -> int:
             print("error: XML-filen är inte en Arrowword DPG-variation", file=sys.stderr)
             return 1
         if args.svg:
-            svg = render_svg(xml_bytes, debug=args.debug)
+            svg = render_svg(xml_bytes, debug=args.debug,
+                             date_str=args.date, bare=args.bare)
             args.svg.write_text(svg)
             print(f"Wrote {args.svg} ({args.svg.stat().st_size:,} bytes)")
         if args.pdf:
-            render_pdf(xml_bytes, args.pdf, debug=args.debug)
+            render_pdf(xml_bytes, args.pdf, debug=args.debug,
+                       date_str=args.date, bare=args.bare)
             print(f"Wrote {args.pdf} ({args.pdf.stat().st_size:,} bytes)")
         return 0
 

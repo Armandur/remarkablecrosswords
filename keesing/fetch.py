@@ -103,10 +103,12 @@ def fetch_puzzle(client_id: str, gametype: str, slot: str) -> Optional[PuzzleRes
 
     if _HAS_KEESING_RENDERER and _keesing_supports(xml_bytes):
         import tempfile, pathlib
+        png_bytes = _get_image(client_id, kse_id)
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp_path = pathlib.Path(tmp.name)
         try:
-            _keesing_render_pdf(xml_bytes, tmp_path)
+            _keesing_render_pdf(xml_bytes, tmp_path, image_bytes=png_bytes,
+                                date_str=str(published_at))
             pdf_bytes = tmp_path.read_bytes()
         finally:
             tmp_path.unlink(missing_ok=True)
