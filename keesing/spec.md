@@ -13,17 +13,6 @@ bilderna - de är tillgängliga direkt via HTTP.
 
 ## Klient-ID:n och kända spel
 
-| Utgivare | client_id | Gametype | Slots | Typ |
-|----------|-----------|----------|-------|-----|
-| Dagens Nyheter | `dnmag` | `arrowword_plus` | x1-x9 | Pilkorsord |
-| Söndagskrysset (DN) | `dnmag` | `arrowword_plus` | x9 | Pilkorsord |
-| Dagens Nyheter | `dnmag` | `crossword` | x3 | Vanligt korsord |
-| Dagens Nyheter | `dnmag` | `sudoku` | x9 | Sudoku (7 stjärnor) |
-| Bonnier News (pool) | `bn` | `arrowword_plus` | x1-x29+ | Pilkorsord |
-| Bonnier News | `bn` | `crossword` | x1+ | Vanligt korsord |
-| Bonnier News | `bn` | `sudoku` | x14+ | Sudoku (varierad svårighetsgrad) |
-| Bonnier News | `bn` | `tectonic` | x1+ | Tectonic |
-
 **Portal-URL (playpuzzlesonline):** `https://playpuzzlesonline.com/{client_id}/?gametype={gametype}&puzzleid={gametype}_{slot}_today`
 **Portal-URL (braintainment):** `https://portal.braintainment.com/{client_id}/?gametype={gametype}&puzzleid={gametype}_{slot}_today`
 
@@ -31,7 +20,25 @@ bilderna - de är tillgängliga direkt via HTTP.
 Varje tidning har ett eller flera dedikerade slots. Slot-nummer framgår av portalsidans `puzzleid`-parameter.
 Titelfältet i XML är alltid tomt för `bn` (liksom för `dnmag`) - ingen XML-metadata avslöjar vilken tidning sloten tillhör.
 
-Svårighetsgrad för sudoku/tectonic anges i `difficulty`-attributet (1-7 för sudoku, 1-5 för tectonic) och i `ipsrecipe`-fältet (t.ex. `Shared Sudoku 9x9 5*`).
+Svårighetsgrad anges i `difficulty`-attributet (1-7) och i `ipsrecipe` (t.ex. `Shared Sudoku 9x9 5*`).
+
+### dnmag (Dagens Nyheter)
+
+| Gametype | Slots | Gridstorlek | Anteckningar |
+|----------|-------|-------------|--------------|
+| `arrowword_plus` | x1-x9 | varierar | 9 pilkorsord per rullande vecka, x9 = Söndagskrysset |
+| `crossword` | x1-x6 | 10x10, 11x5, 13x13 | x1-x4: "Bryderi" (10x10), x5: kompaktformat (11x5), x6: "Klassikern" (13x13) |
+| `sudoku` | x1-x21 | 9x9 | 3 sudokus/dag × 7 dagar. Svårighetsgrad per slot: 1★, 5★, 7★ (de flesta dagar), ibland 4 per dag |
+| `tectonic` | x1 | 9x5 | Lättare format (diff=2) |
+
+### bn (Bonnier News-poolen)
+
+| Gametype | Slots | Gridstorlek | Anteckningar |
+|----------|-------|-------------|--------------|
+| `arrowword_plus` | x1-x34+ | varierar | x1-x25 dagliga (rullande ~1 vecka), x26-x34 äldre/veckopussel |
+| `crossword` | x1-x34+ | 7x9, 5x5 | x1-x2,x4-x7 etc: "BNLO" 7x9, x3,x19 etc: "Gota" 5x5 (Göteborgs-Tidningen?) |
+| `sudoku` | x1-x34+ | 9x9 | Varierad svårighetsgrad (1-5★), vissa slots har "ResultNumbers4"-suffix |
+| `tectonic` | x1-x27+ | 9x9, 8x8 | Blandad gridstorlek per slot, alla diff=3 |
 
 ## API-endpoints
 
