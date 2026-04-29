@@ -4,9 +4,10 @@ Aktuella uppgifter. Färdiga uppgifter flyttas till `TODO_DONE.md`.
 
 ## Källor
 
+- [ ] **Tvinga omsynk per källa** - "Tvinga omsynk"-knapp på källdetaljsidan öppnar en modal med två val: (1) hämta om alla utgåvor enligt aktuell config (rensar cache = sätter state till pending), (2) skriv över befintliga filer på reMarkable. Knappen ska fungera som en kombinerad "rensa cache + kör + overwrite" utan att användaren behöver pilla i inställningar.
+
 ## Design och arkitektur
 
-- [ ] **Automatisk PDF-rotation** - korsord som passar bättre i liggande format (t.ex. bredare än höga) bör roteras 90° innan synk till reMarkable, eftersom det inte går att rotera filer på enheten. Lägg till valfritt `rotate` i Source-config eller identifiera automatiskt baserat på sidmått.
 
 - [ ] **Bryt ut keesing-modulen som eget repo** - likt korsordio är `keesing/` avsedd att
   på sikt bli ett fristående paket. Flytta till eget repo, publicera på PyPI eller

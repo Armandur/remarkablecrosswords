@@ -51,6 +51,10 @@
                     <button type="submit" class="btn btn-primary">Kör nu</button>
                 </form>
 
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#forceSyncModal">
+                    Tvinga omsynk
+                </button>
+
                 <form action="/sources/{{ source.id }}/rerender" method="POST" onsubmit="return confirm('Rendera om alla korsord för denna källa?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn-outline-warning">Rendera om</button>
@@ -127,6 +131,40 @@
     </div>
 </div>
 <div id="cw-pagination" class="mt-2 mb-4"></div>
+
+<div class="modal fade" id="forceSyncModal" tabindex="-1" aria-labelledby="forceSyncModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form action="/sources/{{ source.id }}/force-sync" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="forceSyncModalLabel">Tvinga omsynk</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Stäng"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="refetch" value="true" id="forceRefetch">
+                        <label class="form-check-label" for="forceRefetch">
+                            <strong>Hämta om alla</strong>
+                            <div class="text-muted small">Rensar cache och laddar ner alla utgåvor enligt aktuell config på nytt.</div>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="overwrite" value="true" id="forceOverwrite">
+                        <label class="form-check-label" for="forceOverwrite">
+                            <strong>Skriv över befintliga på reMarkable</strong>
+                            <div class="text-muted small">Laddar upp på nytt även för korsord som redan finns på enheten.</div>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Avbryt</button>
+                    <button type="submit" class="btn btn-primary">Kör</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>

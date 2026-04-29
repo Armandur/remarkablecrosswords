@@ -4,6 +4,8 @@ import logging
 import traceback
 from pathlib import Path
 
+import pikepdf
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
@@ -17,13 +19,36 @@ from app.services.sources.base import ExternalIssue, NoCrosswordError
 
 logger = logging.getLogger(__name__)
 
+
+def _rotate_pdf_if_landscape(pdf_path: Path) -> bool:
+    try:
+        with pikepdf.open(pdf_path, allow_overwriting_input=True) as pdf:
+            page = pdf.pages[0]
+            box = page.mediabox
+            w = float(box[2]) - float(box[0])
+            h = float(box[3]) - float(box[1])
+            existing_rot = int(page.get("/Rotate", 0))
+            if existing_rot in (90, 270):
+                w, h = h, w
+            if w <= h:
+                return False
+            for p in pdf.pages:
+                p.rotate(90, relative=True)
+            pdf.save()
+        logger.info(f"Roterade liggande PDF 90°: {pdf_path}")
+        return True
+    except Exception:
+        logger.warning(f"Kunde inte rotera PDF {pdf_path}", exc_info=True)
+        return False
+
+
 def _get_remote_folder(db: Session, source: Source) -> str:
     base = get_setting(db, "remarkable_folder", REMARKABLE_FOLDER)
     if source.prefix:
         return str(Path(base) / source.prefix.lstrip("/"))
     return base
 
-def sync_pending(db: Session):
+def sync_pending(db: Session, force_overwrite: bool = False):
     crosswords = db.query(Crossword).filter(Crossword.synced_at == None).all()
     if not crosswords:
         return False
@@ -37,7 +62,7 @@ def sync_pending(db: Session):
     for cw in crosswords:
         issue = db.query(Issue).filter(Issue.id == cw.issue_id).first()
         source = db.query(Source).filter(Source.id == issue.source_id).first()
-        overwrite = source.overwrite
+        overwrite = source.overwrite or force_overwrite
 
         remote_folder = _get_remote_folder(db, source)
         job = Job(kind='sync', state='running', source_id=source.id, issue_id=issue.id)
@@ -182,7 +207,7 @@ def run_sync_job(crossword_id: int, job_id: int):
     finally:
         db.close()
 
-def run_pipeline_for_source(source_id: int):
+def run_pipeline_for_source(source_id: int, force_overwrite: bool = False):
     db = SessionLocal()
     try:
         source = db.query(Source).filter(Source.id == source_id).first()
@@ -212,6 +237,7 @@ def run_pipeline_for_source(source_id: int):
 
             try:
                 pdf_path, fetch_log = fetcher.download(source, ext_issue)
+                _rotate_pdf_if_landscape(pdf_path)
 
                 if existing:
                     existing.pdf_path = str(pdf_path)
@@ -285,7 +311,7 @@ def run_pipeline_for_source(source_id: int):
 
             db.commit()
 
-        synced = sync_pending(db)
+        synced = sync_pending(db, force_overwrite=force_overwrite)
 
         if synced:
             notifiers = get_notifiers(db, event="sync_ok")
@@ -338,7 +364,8 @@ def rerender_issues_for_source(source_id: int):
                 )
                 
                 pdf_path, fetch_log = fetcher.download(source, ext_issue)
-                
+                _rotate_pdf_if_landscape(pdf_path)
+
                 issue.pdf_path = str(pdf_path)
                 issue.downloaded_at = datetime.datetime.now(datetime.UTC)
                 issue.state = 'downloaded'

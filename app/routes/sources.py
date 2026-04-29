@@ -135,6 +135,41 @@ async def run_source(source_id: int, background_tasks: BackgroundTasks, user=Dep
     background_tasks.add_task(run_pipeline_for_source, source_id)
     return RedirectResponse(url="/jobs", status_code=303)
 
+@router.post("/{source_id}/force-sync")
+async def force_sync_source(
+    source_id: int,
+    background_tasks: BackgroundTasks,
+    refetch: bool = Form(False),
+    overwrite: bool = Form(False),
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+    _csrf: CsrfProtect = Depends(CsrfProtect())
+):
+    if refetch:
+        issues = db.query(Issue).filter(Issue.source_id == source_id).all()
+        issue_ids = [i.id for i in issues]
+        if issue_ids:
+            crosswords = db.query(Crossword).filter(Crossword.issue_id.in_(issue_ids)).all()
+            for cw in crosswords:
+                if cw.pdf_path:
+                    try:
+                        os.remove(cw.pdf_path)
+                    except (FileNotFoundError, OSError):
+                        pass
+                db.delete(cw)
+        for issue in issues:
+            if issue.pdf_path:
+                try:
+                    os.remove(issue.pdf_path)
+                except (FileNotFoundError, OSError):
+                    pass
+            issue.state = 'pending'
+            issue.pdf_path = None
+            issue.downloaded_at = None
+        db.commit()
+    background_tasks.add_task(run_pipeline_for_source, source_id, overwrite)
+    return RedirectResponse(url="/jobs", status_code=303)
+
 @router.post("/{source_id}/rerender")
 async def rerender_source(source_id: int, background_tasks: BackgroundTasks, user=Depends(require_admin), _csrf: CsrfProtect = Depends(CsrfProtect())):
     background_tasks.add_task(rerender_issues_for_source, source_id)
