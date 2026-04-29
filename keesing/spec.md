@@ -169,6 +169,22 @@ Cellstorlek anpassas automatiskt för A4 (~50px för 15-kolumns-grid).
 - B föredras om den ger klart större font, men ej om A redan passar på en rad
   med tillräcklig storlek, eller om A är inom 95% av B utan stavelsefragment.
 
+#### Expansion av ledtrådsrutor in i bildytan
+Ledtrådsrutor som gränsar till en osynlig cell (bildyta) kan expandera in i den
+för att ge mer plats åt lång text. Renderingen sker i ett utökat rektangelområde
+som täcker både ledtrådsrutan och den osynliga cellen.
+
+Kriterier för expansion (alla måste uppfyllas):
+1. Den osynliga cellen får ha max 1 osynlig granne (exkl. källcellen) - dvs det
+   är en kantcell i bildytan, inte ett inre bildområde.
+2. Expansionsriktningen får inte vara en pilriktning för klueelementet.
+
+Konfliktlösning när flera ledtrådsrutor konkurrerar om samma osynliga cell:
+- Prioritet 0 (bäst): bilden slutar vid expansionscellen (cellen bortom är synlig)
+- Prioritet 1: bilden fortsätter bortom expansionscellen (fler osynliga celler i riktningen)
+- Prioritet 2 (sämst): ledtrådsrutan har diagonal primärpil (t.ex. `arrow4590leftdown`)
+- Vid lika prioritet: koordinatordning (minst y, sedan minst x) avgör
+
 #### Pilrendering
 Pilindikatorerna ritas i den angränsande svarscellen (inte i ledtrådsrutan).
 
@@ -179,6 +195,23 @@ Pilindikatorerna ritas i den angränsande svarscellen (inte i ledtrådsrutan).
 | `arrowrighttop` / `arrowrightdowntop` | cellen till höger |
 | `arrowdownbottom` / `arrowdown` | cellen nedanför |
 | `arrow4590rightdown` / `arrow4590downright` | diagonalt nedre-höger |
+| `arrow4590leftdown` | diagonalt nedre-vänster |
+| `arrowleftdown` | vänster sedan ned (L-pil) |
+
+#### Ordavgränsare i svarsceller
+Flerordssvar (med mellanslag i `puzzleword`) markeras med en röd ifylld triangel
+(1/5 cellhöjd) vid ordgränsen. Riktning baseras på `_cell_dir` mellan angränsande
+svarsceller i ordets path.
+
+#### Svängindikator för L-formade meningar
+Svarsceller där ett ord svänger (riktningsbyte) markeras med en liten svart L-pil
+i svängens ytterhörn. Riktningsbyte identifieras via `cells/cell`-elementet i XML.
+
+#### Sentencearrow (bildpil)
+Celler med `sentencearrow`-pil (fillable=1, tom text) ritas med vit bakgrund och
+en stor röd L-pil eller rätpil som visar vägen från bildytan till svarsrutorna.
+Bakåtgång längs `dirs[0]`-riktningen identifierar mellanceller; stoppas vid
+`visible=0` eller `fillable=0` (klueruta eller bildyta).
 
 ### Variation: PuzzleConstruction Arrowword, Arrowword Pictorial
 

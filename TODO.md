@@ -6,6 +6,7 @@ Aktuella uppgifter. Färdiga uppgifter flyttas till `TODO_DONE.md`.
 
 - [ ] **Tvinga omsynk per källa** - "Tvinga omsynk"-knapp på källdetaljsidan öppnar en modal med två val: (1) hämta om alla utgåvor enligt aktuell config (rensar cache = sätter state till pending), (2) skriv över befintliga filer på reMarkable. Knappen ska fungera som en kombinerad "rensa cache + kör + overwrite" utan att användaren behöver pilla i inställningar.
 
+
 ## Design och arkitektur
 
 

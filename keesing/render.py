@@ -65,11 +65,18 @@ ARROW_DEFS: dict[str, tuple[str, list[str]]] = {
     "arrowrightdowntop":            ("top",    ["right", "down"]),
     "arrowrighttop":                ("top",    ["right"]),
     "arrowupright":                 ("full",   ["up", "right"]),
+    "arrowleftdown":                ("full",   ["left", "down"]),
     "arrow4590downright":           ("full",   ["diag_se", "right"]),
     "arrow4590rightdown":           ("full",   ["diag_se", "down"]),
     "arrow4590upright":             ("full",   ["diag_ne", "right"]),
+    "arrow4590leftdown":            ("full",   ["diag_sw", "down"]),
     "none":                         ("full",   []),
     "sentencearrowdoubledownright": ("full",   ["down", "right"]),
+    "sentencearrowdoubleupright":   ("full",   ["up", "right"]),
+    "sentencearrowdown":            ("full",   ["down"]),
+    "sentencearrowright":           ("full",   ["right"]),
+    "arrowdownpointingsentence":    ("full",   []),
+    "arrowrightpointingsentence":   ("full",   []),
 }
 
 
@@ -301,16 +308,17 @@ def _draw_combined_sentence_arrow(
     corner_cx: float, corner_cy: float,
     cell: int, dirs: list[str],
 ) -> list[str]:
-    """Stor röd L-pil från start_cell till hörncell, sträcker sig över alla mellanceller."""
+    """Stor röd L-pil (eller rak pil) som sträcker sig från start_cell till hörncell."""
     parts: list[str] = []
     sw = max(2.5, cell * 0.08)
     color = "#cc2200"
     ah = cell * 0.22
 
-    d0, d1 = dirs[0], dirs[1] if len(dirs) >= 2 else (dirs[0], "")
+    d0 = dirs[0]
+    d1 = dirs[1] if len(dirs) >= 2 else ""
 
     if d0 == "down" and d1 == "right":
-        # Vertikal del: från topp av start_cell till mitten av hörncell
+        # Vertikal del: från topp av start_cell nedåt till mitten av hörncell
         stem_x = corner_cx + cell / 2
         vert_top = start_cy + cell * 0.07
         turn_y = corner_cy + cell / 2
@@ -319,7 +327,6 @@ def _draw_combined_sentence_arrow(
             f'x2="{stem_x:.1f}" y2="{turn_y:.1f}" '
             f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
         )
-        # Horisontell del med pilhuvud
         horiz_end = corner_cx + cell * 0.73
         parts.append(
             f'<line x1="{stem_x:.1f}" y1="{turn_y:.1f}" '
@@ -332,7 +339,163 @@ def _draw_combined_sentence_arrow(
             f'{horiz_end:.1f},{turn_y+ah:.1f} {ax:.1f},{turn_y:.1f}" '
             f'fill="{color}"/>'
         )
+
+    elif d0 == "up" and d1 == "right":
+        # Vertikal del: från botten av start_cell (som är UNDER hörncell) uppåt till mitten av hörncell
+        stem_x = corner_cx + cell / 2
+        vert_bot = start_cy + cell * 0.93
+        turn_y = corner_cy + cell / 2
+        parts.append(
+            f'<line x1="{stem_x:.1f}" y1="{vert_bot:.1f}" '
+            f'x2="{stem_x:.1f}" y2="{turn_y:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        horiz_end = corner_cx + cell * 0.73
+        parts.append(
+            f'<line x1="{stem_x:.1f}" y1="{turn_y:.1f}" '
+            f'x2="{horiz_end:.1f}" y2="{turn_y:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        ax = corner_cx + cell * 0.94
+        parts.append(
+            f'<polygon points="{horiz_end:.1f},{turn_y-ah:.1f} '
+            f'{horiz_end:.1f},{turn_y+ah:.1f} {ax:.1f},{turn_y:.1f}" '
+            f'fill="{color}"/>'
+        )
+
+    elif d0 == "down" and not d1:
+        # Rak pil nedåt
+        stem_x = corner_cx + cell / 2
+        vert_top = start_cy + cell * 0.07
+        vert_end = corner_cy + cell * 0.73
+        parts.append(
+            f'<line x1="{stem_x:.1f}" y1="{vert_top:.1f}" '
+            f'x2="{stem_x:.1f}" y2="{vert_end:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        ay = corner_cy + cell * 0.94
+        parts.append(
+            f'<polygon points="{stem_x-ah:.1f},{vert_end:.1f} '
+            f'{stem_x+ah:.1f},{vert_end:.1f} {stem_x:.1f},{ay:.1f}" '
+            f'fill="{color}"/>'
+        )
+
+    elif d0 == "right" and not d1:
+        # Rak pil åt höger
+        stem_y = corner_cy + cell / 2
+        horiz_start = start_cx + cell * 0.07
+        horiz_end = corner_cx + cell * 0.73
+        parts.append(
+            f'<line x1="{horiz_start:.1f}" y1="{stem_y:.1f}" '
+            f'x2="{horiz_end:.1f}" y2="{stem_y:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        ax = corner_cx + cell * 0.94
+        parts.append(
+            f'<polygon points="{horiz_end:.1f},{stem_y-ah:.1f} '
+            f'{horiz_end:.1f},{stem_y+ah:.1f} {ax:.1f},{stem_y:.1f}" '
+            f'fill="{color}"/>'
+        )
+
+    elif d0 == "up" and not d1:
+        # Rak pil uppåt (start är UNDER corner)
+        stem_x = corner_cx + cell / 2
+        vert_bot = start_cy + cell * 0.93
+        vert_end = corner_cy + cell * 0.27
+        parts.append(
+            f'<line x1="{stem_x:.1f}" y1="{vert_bot:.1f}" '
+            f'x2="{stem_x:.1f}" y2="{vert_end:.1f}" '
+            f'stroke="{color}" stroke-width="{sw:.1f}" stroke-linecap="round"/>'
+        )
+        ay = corner_cy + cell * 0.06
+        parts.append(
+            f'<polygon points="{stem_x-ah:.1f},{vert_end:.1f} '
+            f'{stem_x+ah:.1f},{vert_end:.1f} {stem_x:.1f},{ay:.1f}" '
+            f'fill="{color}"/>'
+        )
+
     return parts
+
+
+def _draw_word_separator(cx: float, cy: float, cell: int, direction: str) -> list[str]:
+    """Fylld triangel (pilspets) i sentence-cell som markerar att ett nytt ord börjar här.
+    Bas = cellbredd, höjd = 1/4 cell. Placerad längs kanten i läsriktningen."""
+    h = cell * 0.20  # höjd = 1/5 cell
+    color = "#cc2200"
+
+    if direction == "right":
+        # Triangel vid vänsterkanten, pekar höger
+        x0 = cx
+        return [
+            f'<polygon points="{x0:.1f},{cy:.1f} '
+            f'{x0:.1f},{cy + cell:.1f} '
+            f'{x0 + h:.1f},{cy + cell / 2:.1f}" '
+            f'fill="{color}"/>'
+        ]
+    elif direction == "down":
+        # Triangel vid överkanten, pekar nedåt
+        y0 = cy
+        return [
+            f'<polygon points="{cx:.1f},{y0:.1f} '
+            f'{cx + cell:.1f},{y0:.1f} '
+            f'{cx + cell / 2:.1f},{y0 + h:.1f}" '
+            f'fill="{color}"/>'
+        ]
+    return []
+
+
+def _draw_sentence_turn(cx: float, cy: float, cell: int, d_from: str, d_to: str) -> list[str]:
+    """Liten svart L-pil i ytterhörnet av en sväng i en sentence-cell."""
+    parts: list[str] = []
+    arm = cell * 0.17
+    m = 3.0
+    sw = 1.2
+    s = arm * 0.65
+
+    if d_from == "right" and d_to == "down":
+        # Ytterhörn: övre-höger. Horisontell arm ← sedan vertikal arm ↓
+        bx = cx + cell - m
+        by_ = cy + m
+        sx = bx - arm
+        ey = by_ + arm
+        parts.append(
+            f'<path d="M {sx:.2f},{by_:.2f} L {bx:.2f},{by_:.2f} L {bx:.2f},{ey - s:.2f}" '
+            f'fill="none" stroke="black" stroke-width="{sw}" '
+            f'stroke-linejoin="round" stroke-linecap="round"/>'
+        )
+        parts.append(
+            f'<polygon points="{bx:.2f},{ey:.2f} '
+            f'{bx - s/2:.2f},{ey - s:.2f} '
+            f'{bx + s/2:.2f},{ey - s:.2f}" fill="black"/>'
+        )
+
+    elif d_from == "down" and d_to == "right":
+        # Ytterhörn: nedre-vänster. Vertikal arm ↓ sedan horisontell arm →
+        bx = cx + m
+        by_ = cy + cell - m   # böjpunkten i nedre-vänstra hörnet
+        sy = by_ - arm        # start av vertikala armen (ovanför böjpunkten)
+        ex = bx + arm
+        parts.append(
+            f'<path d="M {bx:.2f},{sy:.2f} L {bx:.2f},{by_:.2f} L {ex - s:.2f},{by_:.2f}" '
+            f'fill="none" stroke="black" stroke-width="{sw}" '
+            f'stroke-linejoin="round" stroke-linecap="round"/>'
+        )
+        parts.append(
+            f'<polygon points="{ex:.2f},{by_:.2f} '
+            f'{ex - s:.2f},{by_ - s/2:.2f} '
+            f'{ex - s:.2f},{by_ + s/2:.2f}" fill="black"/>'
+        )
+
+    return parts
+
+
+def _cell_dir(a: tuple[int, int], b: tuple[int, int]) -> str:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    if dx > 0: return "right"
+    if dx < 0: return "left"
+    if dy > 0: return "down"
+    if dy < 0: return "up"
+    return ""
 
 
 def _quiz_number(clues: list[ET.Element]) -> int | None:
@@ -396,11 +559,119 @@ def _build_svg(
             for sc in word.findall("cell"):
                 sentence_cells.add((int(sc.get("x")), int(sc.get("y"))))
 
-    # Stig-celler för sentencearrow: fillable-celler med sentencearrow-clue visar
+    # Sväng-punkter och ordavgränsare: detekteras ur <word><cells/cell>-strukturen.
+    # cells/cell-varianten innehåller alla svar (sentences och vanliga korsordssvar)
+    # inklusive puzzleword-text med mellanslag som markerar ordgränser.
+    word_turns: dict[tuple[int, int], tuple[str, str]] = {}
+    word_sep_cells: dict[tuple[int, int], str] = {}  # (x,y) -> riktning (d_to vid ordgräns)
+    for word in root.iter("word"):
+        wcells = [(int(c.get("x")), int(c.get("y"))) for c in word.findall("cells/cell")]
+        if len(wcells) < 2:
+            continue
+        # Svängar: riktningsskifte i sekvensen
+        for i in range(1, len(wcells) - 1):
+            d_from = _cell_dir(wcells[i - 1], wcells[i])
+            d_to = _cell_dir(wcells[i], wcells[i + 1])
+            if d_from and d_to and d_from != d_to:
+                word_turns[wcells[i]] = (d_from, d_to)
+        # Ordavgränsare: mellanslag i puzzleword pekar ut start av varje delord
+        pw = word.findtext("puzzleword") or ""
+        if " " in pw:
+            words_in_phrase = pw.split(" ")
+            cell_idx = 0
+            for w_idx, subword in enumerate(words_in_phrase):
+                if w_idx > 0 and cell_idx < len(wcells):
+                    pos = wcells[cell_idx]
+                    # Riktning = hur det här delordets celler rör sig
+                    if cell_idx + 1 < len(wcells):
+                        d = _cell_dir(wcells[cell_idx - 1], wcells[cell_idx])
+                        word_sep_cells[pos] = d
+                cell_idx += len(subword)
+
+    # Klueceller som kan expandera in i angränsande osynliga celler (bildruta)
+    # för att ge mer plats åt ledtrådstext.
+    #
+    # Kriterier (i prioritetsordning):
+    # 1. Den osynliga cellen får ha max 1 osynlig granne (exkl. källan) - kantcell i bildytan.
+    # 2. Prioritet per kandidat: 0=bäst (bilden slutar vid expansionscellen),
+    #    1=sämre (bilden fortsätter bortom), 2=sämst (diagonal pil).
+    # 3. Vid kvar-konflikt: koordinatordning (minst y, sedan minst x).
+
+    _CARDINAL_DIRS = {"down", "up", "left", "right"}
+
+    def _invis_edge_neighbors(nx: int, ny: int, src_x: int, src_y: int) -> int:
+        return sum(
+            1 for ddx, ddy in [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            if (nx + ddx, ny + ddy) != (src_x, src_y)
+            and cells.get((nx + ddx, ny + ddy)) is not None
+            and cells[(nx + ddx, ny + ddy)].get("visible") == "0"
+        )
+
+    def _span_priority(nx: int, ny: int, dx: int, dy: int, primary_dir: str) -> int:
+        if primary_dir not in _CARDINAL_DIRS:
+            return 2  # diagonal pil = lägst prioritet
+        beyond = cells.get((nx + dx, ny + dy))
+        if beyond is not None and beyond.get("visible") == "0":
+            return 1  # bilden fortsätter bortom expansionscellen
+        return 0  # bilden slutar här = bäst läge
+
+    # Steg 1: samla kandidater source_xy -> (invis_xy, span_rect, priority, src_xy)
+    _span_candidates: dict[tuple[int, int], tuple[tuple[int, int], tuple, int]] = {}
+    for (x, y), c in cells.items():
+        if c.get("iscluecell") != "1":
+            continue
+        clues_here = c.findall("clue")
+        if not clues_here:
+            continue
+        all_text = " ".join((cl.text or "").replace("\\", " ").strip() for cl in clues_here).upper()
+        if not all_text.strip():
+            continue
+        arrow0 = (clues_here[0].get("arrow") or "none").lower()
+        _, dirs0 = ARROW_DEFS.get(arrow0, ("full", []))
+        arrow_dirs = set(dirs0)
+        primary_dir = dirs0[0] if dirs0 else ""
+        for dx, dy, d_name in [(1, 0, "right"), (-1, 0, "left"), (0, 1, "down"), (0, -1, "up")]:
+            if d_name in arrow_dirs:
+                continue
+            nc = cells.get((x + dx, y + dy))
+            if nc is not None and nc.get("visible") == "0":
+                nx, ny = x + dx, y + dy
+                if _invis_edge_neighbors(nx, ny, x, y) > 1:
+                    continue
+                prio = _span_priority(nx, ny, dx, dy, primary_dir)
+                span_x, span_y, span_w, span_h = x, y, 1, 1
+                if dx == 1:
+                    span_w = 2
+                elif dx == -1:
+                    span_x, span_w = x - 1, 2
+                elif dy == 1:
+                    span_h = 2
+                elif dy == -1:
+                    span_y, span_h = y - 1, 2
+                _span_candidates[(x, y)] = (
+                    (nx, ny),
+                    (px(span_x), py(span_y), span_w * cell, span_h * cell),
+                    prio,
+                )
+                break
+
+    # Steg 2: konfliktlösning - per osynlig cell vinner lägst prioritet, sedan koordinatordning
+    _invis_winner: dict[tuple[int, int], tuple[int, tuple[int, int]]] = {}
+    for src_xy, (invis_xy, rect, prio) in _span_candidates.items():
+        prev = _invis_winner.get(invis_xy)
+        if prev is None or prio < prev[0] or (prio == prev[0] and src_xy < prev[1]):
+            _invis_winner[invis_xy] = (prio, src_xy)
+
+    clue_spans: dict[tuple[int, int], tuple[float, float, float, float]] = {
+        src_xy: _span_candidates[src_xy][1]
+        for _, (_, src_xy) in _invis_winner.items()
+    }
+
+    # Stig-celler för sentencearrow: celler med sentencearrow-clue visar
     # vägen från bildytan till svarsrutorna. Renderas med vit bakgrund + stor röd pil.
     sentence_path_arrows: dict[tuple[int, int], list[str]] = {}
     for (cx_c, cy_c), c_elem in cells.items():
-        if c_elem.get("fillable") != "1":
+        if c_elem.get("iscluecell") == "1" or c_elem.get("visible") == "0":
             continue
         for clue in c_elem.findall("clue"):
             arrow = (clue.get("arrow") or "").lower().strip()
@@ -414,7 +685,9 @@ def _build_svg(
                 rx, ry = cx_c - ddx, cy_c - ddy
                 while 0 <= rx < cols and 0 <= ry < rows:
                     ic = cells.get((rx, ry))
-                    if ic is None or ic.get("visible") == "0":
+                    if ic is None or ic.get("visible") == "0" or ic.get("fillable") == "0":
+                        break
+                    if (rx, ry) in sentence_cells:
                         break
                     if (rx, ry) not in sentence_path_arrows:
                         sentence_path_arrows[(rx, ry)] = [dirs[0]]
@@ -511,6 +784,11 @@ def _build_svg(
                     f'<rect x="{cx}" y="{cy}" width="{cell}" height="{cell}" '
                     f'fill="{SENTENCE_BG}" stroke="black" stroke-width="{STROKE}"/>'
                 )
+                if (x, y) in word_turns:
+                    d_from, d_to = word_turns[(x, y)]
+                    parts.extend(_draw_sentence_turn(cx, cy, cell, d_from, d_to))
+                if (x, y) in word_sep_cells:
+                    parts.extend(_draw_word_separator(cx, cy, cell, word_sep_cells[(x, y)]))
             elif is_path_cell:
                 parts.append(
                     f'<rect x="{cx}" y="{cy}" width="{cell}" height="{cell}" '
@@ -521,6 +799,9 @@ def _build_svg(
                     f'<rect x="{cx}" y="{cy}" width="{cell}" height="{cell}" '
                     f'fill="white" stroke="black" stroke-width="{STROKE}"/>'
                 )
+                if (x, y) in word_turns:
+                    d_from, d_to = word_turns[(x, y)]
+                    parts.extend(_draw_sentence_turn(cx, cy, cell, d_from, d_to))
             elif quiz_num is not None:
                 cx_c = cx + cell / 2
                 cy_c = cy + cell / 2
@@ -550,7 +831,11 @@ def _build_svg(
                     f'r="{r:.2f}" fill="none" stroke="#888" stroke-width="1.5"/>'
                 )
             elif iscluecell:
-                parts.extend(_render_clue_cell(cx, cy, clues, cell, ctx))
+                if (x, y) in clue_spans:
+                    ecx, ecy, ecw, ech = clue_spans[(x, y)]
+                    parts.extend(_render_clue_cell(ecx, ecy, clues, cell, ctx, cw=ecw, ch_total=ech))
+                else:
+                    parts.extend(_render_clue_cell(cx, cy, clues, cell, ctx))
             else:
                 parts.append(
                     f'<rect x="{cx}" y="{cy}" width="{cell}" height="{cell}" '
@@ -558,19 +843,42 @@ def _build_svg(
                 )
 
             if debug:
+                dbg_fs = max(7, cell * 0.14)
                 parts.append(
-                    f'<text x="{cx + cell - 1}" y="{cy + 5}" '
-                    f'font-family="sans-serif" font-size="4" fill="#aaa" '
+                    f'<text x="{cx + cell - 2}" y="{cy + dbg_fs:.1f}" '
+                    f'font-family="sans-serif" font-size="{dbg_fs:.1f}" font-weight="bold" fill="#d00" '
                     f'text-anchor="end">{x},{y}</text>'
                 )
 
     # Andra passet: kombinerade sentencearrow-pilar (en pil per hörncell, sträcker sig över mellanceller)
     for (corner_x, corner_y), dirs in sentence_path_arrows.items():
-        if len(dirs) < 2:
-            continue  # mellanceller ritas av sin hörncell
+        if not dirs or len(dirs) < 2:
+            continue
         d0 = dirs[0]
         ddx, ddy = _DIR_DELTA.get(d0, (0, 0))
         # Hitta alla mellanceller längs d0-riktningen bakåt från hörnet
+        rx, ry = corner_x - ddx, corner_y - ddy
+        start_x, start_y = corner_x, corner_y
+        while (rx, ry) in sentence_path_arrows and sentence_path_arrows[(rx, ry)] == [d0]:
+            start_x, start_y = rx, ry
+            rx -= ddx
+            ry -= ddy
+        parts.extend(_draw_combined_sentence_arrow(
+            px(start_x), py(start_y), px(corner_x), py(corner_y), cell, dirs
+        ))
+    # Andra passet (enkel riktning): pil per ändcell i kedjan.
+    # En ändcell är en cell vars NÄSTA granne (i d0-riktningen) INTE är en mellancell.
+    for (corner_x, corner_y), dirs in sentence_path_arrows.items():
+        if len(dirs) != 1:
+            continue
+        d0 = dirs[0]
+        ddx, ddy = _DIR_DELTA.get(d0, (0, 0))
+        # Är detta ändcell? Ja om nästa cell i d0-riktningen EJ är en cell som rör sig i samma riktning.
+        fwd = (corner_x + ddx, corner_y + ddy)
+        fwd_dirs = sentence_path_arrows.get(fwd)
+        if fwd_dirs and fwd_dirs[0] == d0:
+            continue  # mellancell, ritas av sin ändcell
+        # Hitta kedjans START (gå bakåt längs d0)
         rx, ry = corner_x - ddx, corner_y - ddy
         start_x, start_y = corner_x, corner_y
         while (rx, ry) in sentence_path_arrows and sentence_path_arrows[(rx, ry)] == [d0]:
@@ -647,36 +955,42 @@ def _best_split(text0: str, text1: str, cell: int, ctx: _Ctx) -> float:
 
 
 def _render_clue_cell(
-    cx: float, cy: float, clues: list[ET.Element], cell: int, ctx: _Ctx
+    cx: float, cy: float, clues: list[ET.Element], cell: int, ctx: _Ctx,
+    cw: float = 0, ch_total: float = 0,
 ) -> list[str]:
+    """Renderar en kluecell. cw/ch_total: anpassad bredd/höjd i pixlar (0 = cell)."""
     parts: list[str] = []
+    cw = cw or float(cell)
+    ch_total = ch_total or float(cell)
+    # Filtrera bort tomma clue-element (ingen text och inget arrow-attribut)
+    clues = [c for c in clues if (c.text or "").strip() or c.get("arrow")]
     if len(clues) == 2:
         text0 = (clues[0].text or "").strip().upper()
         text1 = (clues[1].text or "").strip().upper()
         r = _best_split(text0, text1, cell, ctx)
-        h0 = cell * r
-        h1 = cell - h0
-        parts.extend(_clue_area(cx, cy, cell, h0, clues[0], ctx))
-        parts.extend(_clue_area(cx, cy + h0, cell, h1, clues[1], ctx))
+        h0 = ch_total * r
+        h1 = ch_total - h0
+        parts.extend(_clue_area(cx, cy, cw, h0, clues[0], ctx))
+        parts.extend(_clue_area(cx, cy + h0, cw, h1, clues[1], ctx))
         mid = cy + h0
         parts.append(
-            f'<line x1="{cx}" y1="{mid}" x2="{cx + cell}" y2="{mid}" '
+            f'<line x1="{cx}" y1="{mid}" x2="{cx + cw}" y2="{mid}" '
             f'stroke="black" stroke-width="{STROKE}"/>'
         )
     else:
-        parts.extend(_clue_area(cx, cy, cell, float(cell), clues[0] if clues else None, ctx))
+        parts.extend(_clue_area(cx, cy, cw, ch_total, clues[0] if clues else None, ctx))
     return parts
 
 
 def _clue_area(
     cx: float, cy: float,
-    cell: int, ch: float,
+    cw: float, ch: float,
     clue: ET.Element | None,
     ctx: _Ctx,
 ) -> list[str]:
     parts: list[str] = []
     parts.append(
-        f'<rect x="{cx}" y="{cy}" width="{cell}" height="{ch:.2f}" '
+        f'<rect x="{cx}" y="{cy}" width="{cw:.2f}" height="{ch:.2f}" '
         f'fill="{CLUE_BG}" stroke="black" stroke-width="{STROKE}"/>'
     )
     if clue is None:
@@ -684,7 +998,7 @@ def _clue_area(
 
     raw_text = (clue.text or "").strip().upper()
 
-    text_w = float(cell) - ctx.pad_x * 2
+    text_w = cw - ctx.pad_x * 2
     text_h = ch - ctx.pad_y * 2
 
     if raw_text:
@@ -692,7 +1006,7 @@ def _clue_area(
         line_h = font_size * 1.15
         total_text_h = len(lines) * line_h
         start_y = cy + ctx.pad_y + (text_h - total_text_h) / 2 + font_size
-        center_x = cx + cell / 2
+        center_x = cx + cw / 2
         for i, line in enumerate(lines):
             parts.append(
                 f'<text x="{center_x:.2f}" y="{start_y + i * line_h:.2f}" '
@@ -707,6 +1021,7 @@ _DIR_DELTA: dict[str, tuple[int, int]] = {
     "down": (0, 1), "up": (0, -1),
     "right": (1, 0), "left": (-1, 0),
     "diag_se": (1, 1), "diag_ne": (1, -1),
+    "diag_sw": (-1, 1),
 }
 
 
@@ -772,6 +1087,24 @@ def _draw_arrow_corner(adj_cx: float, adj_cy: float, cell: int, dirs: list[str])
             f'{tx - s:.2f},{by_ + s/2:.2f}" fill="black"/>'
         )
 
+    elif "left" in d_set and "down" in d_set:
+        if dirs[0] == "left":
+            # Första arm ←: börjar arm/2 till höger om cellgränsen (i ledtrådsrutan)
+            ly = adj_cy + m
+            sx = adj_cx + cell + arm / 2  # start i ledtrådsrutan
+            bx = adj_cx + cell - arm / 2  # böjpunkt i svarscellen
+            ey = ly + arm
+            parts.append(
+                f'<path d="M {sx:.2f},{ly:.2f} L {bx:.2f},{ly:.2f} L {bx:.2f},{ey - s:.2f}" '
+                f'fill="none" stroke="black" stroke-width="{sw}" '
+                f'stroke-linejoin="round" stroke-linecap="round"/>'
+            )
+            parts.append(
+                f'<polygon points="{bx:.2f},{ey:.2f} '
+                f'{bx - s/2:.2f},{ey - s:.2f} '
+                f'{bx + s/2:.2f},{ey - s:.2f}" fill="black"/>'
+            )
+
     elif "diag_se" in d_set:
         # Diagonalarm ↘: halvvägs in i ledtrådsrutan, böjpunkt vid cellgränsen
         word_dir = dirs[1] if len(dirs) > 1 else None
@@ -790,6 +1123,26 @@ def _draw_arrow_corner(adj_cx: float, adj_cy: float, cell: int, dirs: list[str])
                 f'{tx - s:.2f},{by_ + s/2:.2f}" fill="black"/>'
             )
         elif word_dir == "down":
+            ty = by_ + arm
+            parts.append(
+                f'<path d="M {sx:.2f},{sy:.2f} L {bx:.2f},{by_:.2f} L {bx:.2f},{ty - s:.2f}" '
+                f'fill="none" stroke="black" stroke-width="{sw}" '
+                f'stroke-linejoin="round" stroke-linecap="round"/>'
+            )
+            parts.append(
+                f'<polygon points="{bx:.2f},{ty:.2f} '
+                f'{bx - s/2:.2f},{ty - s:.2f} '
+                f'{bx + s/2:.2f},{ty - s:.2f}" fill="black"/>'
+            )
+
+    elif "diag_sw" in d_set:
+        # Diagonalarm ↙: start i ledtrådsrutan (övre-höger), böjpunkt i svarscellens övre-högra hörn
+        word_dir = dirs[1] if len(dirs) > 1 else None
+        sx = adj_cx + cell + arm / 2   # start (i ledtrådsrutan, ovanför-höger)
+        sy = adj_cy - arm / 2
+        bx = adj_cx + cell - arm / 2   # böjpunkt (i svarscellen, övre-höger)
+        by_ = adj_cy + arm / 2
+        if word_dir == "down":
             ty = by_ + arm
             parts.append(
                 f'<path d="M {sx:.2f},{sy:.2f} L {bx:.2f},{by_:.2f} L {bx:.2f},{ty - s:.2f}" '
