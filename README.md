@@ -8,6 +8,7 @@ Hämtar korsord automatiskt och synkar dem till din reMarkable-läsplatta som PD
 |---|---|---|
 | **korsord.io** | Sverigekrysset, Miljonkrysset m.fl. — hämtar `.crossword`-JSON och renderar PDF lokalt | `30 6 * * 1` |
 | **SR Melodikryss** | Sveriges Radio P4:s veckokryss — direktnedladdning av färdig PDF | `30 8 * * 6` |
+| **Keesing (Arrowword DPG)** | Pilkorsord via Keesing Content API — hämtar XML + bild och renderar PDF lokalt. Täcker bl.a. Dagens Nyheter, Söndagskrysset och Bonnier News-poolen (Expressen, Sydsvenskan m.fl.) | `0 7 * * *` |
 
 ## Funktioner
 
@@ -15,6 +16,7 @@ Hämtar korsord automatiskt och synkar dem till din reMarkable-läsplatta som PD
 - Schemalagda hämtningar per källa (APScheduler + cron-uttryck)
 - Synkstatus uppdateras asynkront i korsordslistans — klicka på utfall för att se logg
 - Rendera om enstaka källas alla korsord (t.ex. efter ändrad inställning)
+- Tvinga omhämtning med valfri kombination av cache-rensning och overwrite på reMarkable
 - Notifieringar via [ntfy](https://ntfy.sh) när nya korsord synkats
 - Fallback: `LocalQueueClient` kopierar PDF:er till en lokal mapp om rmapi inte är tillgänglig
 
@@ -64,6 +66,10 @@ Kopiera `.env.example` och justera:
 
 ```
 korsordio/              fristående modul — hämtar och renderar korsord.io-kryss
+keesing/                fristående modul — hämtar och renderar Keesing-pussel
+  fetch.py              GetPuzzleInfo + getxml + getimage mot web.keesing.com
+  render.py             SVG/PDF-rendering av Arrowword DPG (pilkorsord)
+  spec.md               API-dokumentation och XML-format
 app/
   main.py               FastAPI-app, lifespan, router-registrering
   config.py             miljövariabler och sökvägar
@@ -77,13 +83,17 @@ app/
     sources/
       korsordio/        KorsordioFetcher + spec.md
       sr_melodikryss/   SRMelodikryssFetcher + spec.md
+      keesing/          KeesingFetcher (Arrowword DPG) + spec.md
   templates/            Jinja2 + Bootstrap 5
 ```
 
 Nya källtyper läggs till i `app/services/sources/` — implementera `SourceFetcher`-protokollet (`list_available` + `download`) och registrera i `SOURCE_KINDS`.
 
+`keesing/`-modulen är fristående och avsedd att på sikt brytas ut som eget paket, likt `korsordio/`. Den innehåller även spec och renderare för Keesing-speltyperna crossword, sudoku och tectonic (inte implementerade ännu).
+
 ## Krav
 
 - Python 3.12
-- [`rmapi`](https://github.com/ddvk/rmapi) (ingår i Docker-imagen, hämtas från senaste release)
+- [`rmapi`](https://github.com/ddvk/rmapi) v0.0.32 (ingår i Docker-imagen)
 - `cairosvg` + systembibliotek för CairoSVG (ingår i Docker-imagen)
+- `pyphen` för stavelseavstavning i Keesing-renderaren
