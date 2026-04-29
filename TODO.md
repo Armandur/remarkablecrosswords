@@ -26,25 +26,31 @@ API-åtkomst sker via befintliga fetch-funktioner (GetPuzzleInfo + getxml).
   tjocka kanter mellan regioner, tunna inom region.
   Förifyllda siffror i fetstil.
 
-## Keesing - rikare metadata i filnamnsättaren
+## Rikare metadata i filnamnsättaren
 
-- [ ] **Exponera ipsrecipe och difficulty från keesing-modulen** - Medel prio
+- [ ] **Generellt extra-fält-system för filnamnsmallar** - Medel prio
 
-  Idag parsas varken `ipsrecipe` eller `difficulty` ur `<puzzle>`-elementet i getxml.
-  Dessa fält innehåller information som är användbar i filnamnsättaren, t.ex.:
-  - `ipsrecipe="DN_CW1313_Klassikern_Intern_NoRW"` -> "Klassikern" (serien)
-  - `difficulty="5"` -> svårighetsgrad (1-7) för sudoku/tectonic
+  Varje källtyp ska kunna exponera källspecifika metadatafält som användaren kan
+  använda i filnamnsmallen via syntaxen `{extra:FÄLTNAMN}`.
 
-  Deluppgifter:
-  1. Hämta `ipsrecipe` och `difficulty` i `keesing/fetch.py:_get_xml()` och lägg till i `PuzzleResult`
-  2. Parsa ut ett läsbart serienamn ur ipsrecipe (t.ex. tredje segmentet i `_`-separerad sträng)
-  3. Exponera extrafält via `ExternalIssue` - lämpligen ett generiskt `extra: dict`-fält
-     (undvik att förorena den generella dataklassen med keesing-specifika attribut)
-  4. Uppdatera `render_filename` i `base.py` att stödja `{extra[series]}` eller liknande
-  5. Uppdatera keesing-fetcher att fylla extra-dict med `series`, `difficulty`, `slot`
+  Design:
+  - `ExternalIssue` får ett `extra: dict[str, str]`-fält (default tom dict)
+  - `render_filename` i `base.py` parsar `{extra:FÄLTNAMN}` och slår upp i `extra`
+  - `SourceFetcher`-protokollet utökas med en valfri metod `extra_fields() -> list[dict]`
+    som returnerar en lista med metadata om tillgängliga fält, t.ex.:
+    `[{"key": "series", "label": "Serie", "example": "Klassikern"}, ...]`
+  - UI:t anropar detta vid redigering av filnamnsmall och visar tillgängliga fält
+    som klickbara chips (infogar `{extra:FÄLTNAMN}` i templatefältet)
+
+  Keesing-specifika fält att exponera (hämtas ur getxml `<puzzle>`-attribut):
+  - `series` - parsad ur `ipsrecipe` (t.ex. "Klassikern" ur `DN_CW1313_Klassikern_Intern_NoRW`)
+  - `difficulty` - svårighetsgrad som siffra (1-7), relevant för sudoku/tectonic
+  - `slot` - slot-identifierare (t.ex. "x6")
+  - `byline` - upphovsmannens namn
 
   Potentiellt värde: Keesing-korsord kan automatnamnas "Klassikern 2026-04-29" eller
-  "Söndagskrysset 2026-04-27" utan manuell konfiguration av filnamnstemplate.
+  "Söndagskrysset 2026-04-27" utan manuell konfiguration. Mönstret är generellt och
+  funkar för framtida källtyper med egna metadatafält.
 
 ## Design och arkitektur
 
