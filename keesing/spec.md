@@ -11,19 +11,27 @@ id="puzzle-portal" data-customerid="dnmag">`. All pussel-logik och alla
 API-anrop sker inuti bundlen. **Ingen JS-rendering behövs** för att hämta
 bilderna - de är tillgängliga direkt via HTTP.
 
-## Klient-ID:n
+## Klient-ID:n och kända spel
 
-| Utgivare | client_id | Gametype | Slots |
-|----------|-----------|----------|-------|
-| Dagens Nyheter | `dnmag` | `arrowword_plus` | x1-x9 |
-| Söndagskrysset (DN) | `dnmag` | `arrowword_plus` | x9 |
-| Bonnier News (pool) | `bn` | `arrowword_plus` | x1-x29+ |
+| Utgivare | client_id | Gametype | Slots | Typ |
+|----------|-----------|----------|-------|-----|
+| Dagens Nyheter | `dnmag` | `arrowword_plus` | x1-x9 | Pilkorsord |
+| Söndagskrysset (DN) | `dnmag` | `arrowword_plus` | x9 | Pilkorsord |
+| Dagens Nyheter | `dnmag` | `crossword` | x3 | Vanligt korsord |
+| Dagens Nyheter | `dnmag` | `sudoku` | x9 | Sudoku (7 stjärnor) |
+| Bonnier News (pool) | `bn` | `arrowword_plus` | x1-x29+ | Pilkorsord |
+| Bonnier News | `bn` | `crossword` | x1+ | Vanligt korsord |
+| Bonnier News | `bn` | `sudoku` | x14+ | Sudoku (varierad svårighetsgrad) |
+| Bonnier News | `bn` | `tectonic` | x1+ | Tectonic |
 
-**Portal-URL:** `https://portal.braintainment.com/{client_id}/?gametype={gametype}&puzzleid={gametype}_{slot}_today`
+**Portal-URL (playpuzzlesonline):** `https://playpuzzlesonline.com/{client_id}/?gametype={gametype}&puzzleid={gametype}_{slot}_today`
+**Portal-URL (braintainment):** `https://portal.braintainment.com/{client_id}/?gametype={gametype}&puzzleid={gametype}_{slot}_today`
 
 `bn` är en gemensam pool för hela Bonnier News-nätverket (Expressen, Sydsvenskan, Ångermanland m.fl.).
 Varje tidning har ett eller flera dedikerade slots. Slot-nummer framgår av portalsidans `puzzleid`-parameter.
 Titelfältet i XML är alltid tomt för `bn` (liksom för `dnmag`) - ingen XML-metadata avslöjar vilken tidning sloten tillhör.
+
+Svårighetsgrad för sudoku/tectonic anges i `difficulty`-attributet (1-7 för sudoku, 1-5 för tectonic) och i `ipsrecipe`-fältet (t.ex. `Shared Sudoku 9x9 5*`).
 
 ## API-endpoints
 
@@ -216,6 +224,154 @@ Bakåtgång längs `dirs[0]`-riktningen identifierar mellanceller; stoppas vid
 ### Variation: PuzzleConstruction Arrowword, Arrowword Pictorial
 
 Saknar ledtrådstexter i XML - konverteras direkt från PNG via `img2pdf`.
+
+## Gametype: crossword (Vanligt korsord)
+
+`getimage` returnerar 500 - ingen bild. Allt renderas från XML.
+
+### XML-struktur
+
+```xml
+<puzzle type="Crossword" variation="Crossword General" width="10" height="10" difficulty="1">
+  <title />
+  <grid>
+    <cells>
+      <cell x="0" y="0" visible="1" content="F" giveaway="0" fillable="1" />
+      <cell x="1" y="0" visible="1" content="" giveaway="0" fillable="0" />
+      ...
+    </cells>
+  </grid>
+  <wordgroups>
+    <wordgroup index="1" kind="horizontal">
+      <header>Vågrätt</header>
+      <words>
+        <word length="10" content="INTERVJUAT" giveaway="0" number="6">
+          <cells>
+            <cell x="0" y="1" />
+            ...
+          </cells>
+          <puzzleword>intervjuat</puzzleword>
+          <clue>varit frågvis</clue>
+        </word>
+        ...
+      </words>
+    </wordgroup>
+    <wordgroup index="2" kind="vertical">...</wordgroup>
+  </wordgroups>
+</puzzle>
+```
+
+#### Celltyper
+
+| fillable | Typ |
+|----------|-----|
+| `1` | Svarscell (vit, fylls av spelaren) |
+| `0` | Svart ruta (avdelare) |
+
+Alla celler är `visible=1`. Inget `iscluecell` eller `arrow`-attribut.
+
+#### Ledtrådar
+
+Ledtrådar finns i `<wordgroups>/<wordgroup>/<words>/<word>/<clue>`.
+Varje ord har ett `number`-attribut som visas i gridens övre vänstra hörn på
+ordets första cell. Numrering är inte sammanhängande - luckor förekommer.
+
+`<puzzleword>` innehåller svaret i lowercase med mellanslag för flerordssvar.
+`content`-attributet på `<word>` är svaret i versaler utan mellanslag.
+
+#### Rendering (ej implementerad)
+
+Tänkt renderingsansats:
+- Grid med svarsceller (vita) och svarta rutor
+- Cellnummer i övre vänstra hörnet (liten font) för ord-startar
+- Separat kluelist under grid: "Vågrätt" och "Lodrätt" med nummer och ledtrådstext
+- Cellstorlek anpassas för A4
+
+## Gametype: sudoku
+
+`getimage` returnerar 500 - ingen bild. Allt renderas från XML.
+
+### XML-struktur
+
+```xml
+<puzzle type="Sudoku" variation="Sudoku 9x9" variationcode="su9di"
+        width="9" height="9" difficulty="5">
+  <title>Sudoku</title>
+  <grid>
+    <cells>
+      <cell x="0" y="0" visible="1" content="8" giveaway="1" />
+      <cell x="1" y="0" visible="1" content="2" giveaway="0" />
+      ...
+    </cells>
+  </grid>
+</puzzle>
+```
+
+`giveaway="1"` = förifylld (ges till spelaren, visas i fetstil/grå bakgrund).
+`giveaway="0"` = tom cell i startläget (spelaren ska fylla i).
+`content` innehåller alltid rätt svar (1-9) oavsett giveaway.
+
+Svårighetsgrad i `difficulty` (1-7) och `ipsrecipe` (t.ex. `Shared Sudoku 9x9 5*`).
+
+#### Rendering (ej implementerad)
+
+Tänkt renderingsansats:
+- 9x9 grid med tunna inre linjer och tjocka kanter runt 3x3-boxarna
+- Förifyllda siffror i fetstil eller med grå bakgrund
+- Tomma celler lämnas vita
+- Svårighetsgrad och datum som rubrik
+
+## Gametype: tectonic
+
+`getimage` returnerar 500 - ingen bild. Allt renderas från XML.
+
+### XML-struktur
+
+```xml
+<puzzle type="Tectonic" variation="Tectonic" variationcode="tectc"
+        width="9" height="9" difficulty="3">
+  <title>Tectonic</title>
+  <grid>
+    <colors>
+      <color id="1" name="color1" ARGB="0xffba55d3" />
+      <color id="2" name="color2" ARGB="0xffe0ffff" />
+      ...
+    </colors>
+    <cells>
+      <cell x="0" y="0" visible="1" content="2" giveaway="0" />
+      ...
+    </cells>
+    <regions>
+      <region colorid="1" border="1">
+        <cells>
+          <cell x="7" y="5" />
+          <cell x="7" y="6" />
+          <cell x="8" y="6" />
+          ...
+        </cells>
+      </region>
+      ...
+    </regions>
+    <constraints />
+  </grid>
+</puzzle>
+```
+
+Varje region innehåller 1-5 celler. Siffrorna 1..regionstorlek ska placeras
+en gång var i regionen, utan upprepning i angränsande celler (alla 8 riktningar).
+
+`colorid` refererar till `<color id>` och anger bakgrundsfärg per region.
+`ARGB`-värdet är i hex med alpha (`0xff` = helt ogenomskinlig).
+
+`giveaway="1"` = förifylld siffra. `content` innehåller alltid rätt svar.
+
+#### Rendering (ej implementerad)
+
+Tänkt renderingsansats:
+- Grid där varje cell färgas med regionens bakgrundsfärg
+- Tjocka kanter ritas mellan celler som tillhör olika regioner
+- Tunna kanter ritas mellan celler i samma region
+- Förifyllda siffror i fetstil; tomma celler lämnas vita/tomma
 
 ## Implementationsnoter
 
