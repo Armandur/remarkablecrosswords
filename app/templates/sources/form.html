@@ -49,6 +49,15 @@
                             Tillgängliga variabler: <code>{name}</code>, <code>{date}</code>, <code>{year}</code>, <code>{month}</code>, <code>{day}</code>, <code>{source}</code>, <code>{id}</code>.
                             Lämna tomt för automatiskt namn.
                         </div>
+                        {% if extra_fields %}
+                        <div class='mt-1 d-flex flex-wrap gap-1' id='extraFieldChips'>
+                          <small class='text-muted me-1'>Källspecifika:</small>
+                          {% for f in extra_fields %}
+                          <button type='button' class='btn btn-outline-secondary btn-sm py-0 px-1 extra-chip'
+                                  data-key='{{ f.key }}' title='{{ f.example }}'>{{ f.label }}</button>
+                          {% endfor %}
+                        </div>
+                        {% endif %}
                         <div id="filenamePreview" class="form-text mt-1 text-secondary"></div>
                         <div id="filenameTestResult" class="mt-2 d-none"></div>
                     </div>
@@ -782,6 +791,22 @@ document.addEventListener('DOMContentLoaded', function() {
             testBtn.textContent = 'Testa';
         });
     }
+
+    // Extra fields chips handler
+    document.querySelectorAll('.extra-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const input = document.getElementById('filenameTemplateInput');
+            const key = btn.dataset.key;
+            const pos = input.selectionStart ?? input.value.length;
+            const val = input.value;
+            input.value = val.slice(0, pos) + '{extra:' + key + '}' + val.slice(pos);
+            input.focus();
+            input.setSelectionRange(pos + key.length + 8, pos + key.length + 8);
+            
+            // Uppdatera preview direkt
+            renderTemplatePreview();
+        });
+    });
 });
 </script>
 {% endblock %}

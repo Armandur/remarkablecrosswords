@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol, TYPE_CHECKING
@@ -17,6 +17,7 @@ class ExternalIssue:
     external_id: str
     name: str
     published_at: datetime | None
+    extra: dict[str, str] = field(default_factory=dict)
 
 def render_filename(template: str, ext_issue: ExternalIssue, source_name: str) -> str:
     """Renderar ett filnamn utifrån ett template och saniterar det."""
@@ -25,6 +26,12 @@ def render_filename(template: str, ext_issue: ExternalIssue, source_name: str) -
     month = f"{ext_issue.published_at.month:02d}" if ext_issue.published_at else ""
     day = f"{ext_issue.published_at.day:02d}" if ext_issue.published_at else ""
     
+    # Hantera {extra:NYCKEL} via regex-förbehandling INNAN format()
+    def _replace_extra(m):
+        return ext_issue.extra.get(m.group(1), "")
+    
+    template = re.sub(r"\{extra:([^}]+)\}", _replace_extra, template)
+
     try:
         filename = template.format(
             name=ext_issue.name,

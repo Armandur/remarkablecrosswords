@@ -23,7 +23,7 @@ async def list_sources(request: Request, db: Session = Depends(get_db), user=Dep
 @router.get("/new")
 async def new_source_form(request: Request, db: Session = Depends(get_db), user=Depends(require_admin)):
     tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
-    return templates.TemplateResponse(request, "sources/form.html", {"timezone": tz})
+    return templates.TemplateResponse(request, "sources/form.html", {"timezone": tz, "extra_fields": []})
 
 @router.post("/")
 async def create_source(
@@ -65,7 +65,18 @@ async def source_detail(source_id: int, request: Request, db: Session = Depends(
 async def edit_source_form(source_id: int, request: Request, db: Session = Depends(get_db), user=Depends(require_admin)):
     source = db.query(Source).filter(Source.id == source_id).first()
     tz = get_setting(db, "timezone", DEFAULT_TIMEZONE)
-    return templates.TemplateResponse(request, "sources/form.html", {"source": source, "timezone": tz})
+    
+    extra_fields = []
+    if source:
+        fetcher = SOURCE_KINDS.get(source.kind)
+        if fetcher and hasattr(fetcher, "extra_fields"):
+            extra_fields = fetcher.extra_fields()
+            
+    return templates.TemplateResponse(request, "sources/form.html", {
+        "source": source, 
+        "timezone": tz, 
+        "extra_fields": extra_fields
+    })
 
 @router.post("/{source_id}/edit")
 async def update_source(
