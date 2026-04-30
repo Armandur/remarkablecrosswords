@@ -507,3 +507,6 @@ tävlingsinfo direkt på sidan.
 
 - [x] **Tvinga omsynk per källa** - Modal med två val: (1) hämta om alla utgåvor (rensar cache), (2) skriv över befintliga filer på reMarkable.
 - [x] **Vanligt korsord (`crossword`)** - `keesing/render_crossword.py`: innehållsstorlad SVG/PDF, auto-dispatch i fetch.py. Cellstorlek kalibrerad mot A4-bredd, kluelista i två kolumner under grid.
+
+- [x] **Sudoku** - `keesing/render_sudoku.py`: 9x9-grid, tjocka boxkanter, förifyllda siffror i fetstil, svårighetsgrad som stjärnor.
+- [x] **Tectonic** - `keesing/render_tectonic.py`: regionfärgad bakgrund (ARGB blekad mot vitt), tjocka regionsgränser, tunna inre kanter.

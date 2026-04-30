@@ -11,14 +11,6 @@ API-åtkomst sker via befintliga fetch-funktioner (GetPuzzleInfo + getxml).
 
 - [ ] **Sudoku** - PRIORITET
 
-- [ ] **Sudoku** - PRIORITET
-  Rendera 9x9-grid till PDF: tjocka kanter runt 3x3-boxar, tunna inre linjer,
-  förifyllda siffror i fetstil. Giveaway-celler med `giveaway="1"`.
-
-- [ ] **Tectonic** - efter korsord
-  Rendera grid till PDF: regionfärgad bakgrund (ARGB från `<color>`),
-  tjocka kanter mellan regioner, tunna inom region.
-  Förifyllda siffror i fetstil.
 
 ## Rikare metadata i filnamnsättaren
 
