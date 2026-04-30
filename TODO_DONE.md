@@ -502,3 +502,8 @@ tävlingsinfo direkt på sidan.
 12. Web Push om/när du vill ha det.
 13. Tests + CI.
 14. Bryt ut `korsordio` till eget repo + PyPI om modulen mognar.
+
+## Klar 2026-04-30
+
+- [x] **Tvinga omsynk per källa** - Modal med två val: (1) hämta om alla utgåvor (rensar cache), (2) skriv över befintliga filer på reMarkable.
+- [x] **Vanligt korsord (`crossword`)** - `keesing/render_crossword.py`: innehållsstorlad SVG/PDF, auto-dispatch i fetch.py. Cellstorlek kalibrerad mot A4-bredd, kluelista i två kolumner under grid.

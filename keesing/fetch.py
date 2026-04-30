@@ -23,10 +23,16 @@ import img2pdf
 import requests
 
 try:
-    from keesing.render import render_pdf as _keesing_render_pdf, supports_xml as _keesing_supports
-    _HAS_KEESING_RENDERER = True
+    from keesing.render import render_pdf as _arrowword_render_pdf, supports_xml as _arrowword_supports
+    _HAS_ARROWWORD_RENDERER = True
 except ImportError:
-    _HAS_KEESING_RENDERER = False
+    _HAS_ARROWWORD_RENDERER = False
+
+try:
+    from keesing.render_crossword import render_crossword_pdf as _crossword_render_pdf, supports_crossword_xml as _crossword_supports
+    _HAS_CROSSWORD_RENDERER = True
+except ImportError:
+    _HAS_CROSSWORD_RENDERER = False
 
 BASE_CONTENT = "https://web.keesing.com/content"
 BASE_CONTENT_CAP = "https://web.keesing.com/Content"
@@ -101,14 +107,23 @@ def fetch_puzzle(client_id: str, gametype: str, slot: str) -> Optional[PuzzleRes
 
     xml_bytes, title, variation, byline = _get_xml(client_id, kse_id)
 
-    if _HAS_KEESING_RENDERER and _keesing_supports(xml_bytes):
+    if _HAS_ARROWWORD_RENDERER and _arrowword_supports(xml_bytes):
         import tempfile, pathlib
         png_bytes = _get_image(client_id, kse_id)
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp_path = pathlib.Path(tmp.name)
         try:
-            _keesing_render_pdf(xml_bytes, tmp_path, image_bytes=png_bytes,
-                                date_str=str(published_at))
+            _arrowword_render_pdf(xml_bytes, tmp_path, image_bytes=png_bytes,
+                                  date_str=str(published_at))
+            pdf_bytes = tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    elif _HAS_CROSSWORD_RENDERER and _crossword_supports(xml_bytes):
+        import tempfile, pathlib
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = pathlib.Path(tmp.name)
+        try:
+            _crossword_render_pdf(xml_bytes, tmp_path, date_str=str(published_at))
             pdf_bytes = tmp_path.read_bytes()
         finally:
             tmp_path.unlink(missing_ok=True)
