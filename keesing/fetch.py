@@ -34,6 +34,12 @@ try:
 except ImportError:
     _HAS_CROSSWORD_RENDERER = False
 
+try:
+    from keesing.render_sudoku import render_sudoku_pdf as _sudoku_render_pdf, supports_sudoku_xml as _sudoku_supports
+    _HAS_SUDOKU_RENDERER = True
+except ImportError:
+    _HAS_SUDOKU_RENDERER = False
+
 BASE_CONTENT = "https://web.keesing.com/content"
 BASE_CONTENT_CAP = "https://web.keesing.com/Content"
 
@@ -124,6 +130,15 @@ def fetch_puzzle(client_id: str, gametype: str, slot: str) -> Optional[PuzzleRes
             tmp_path = pathlib.Path(tmp.name)
         try:
             _crossword_render_pdf(xml_bytes, tmp_path, date_str=str(published_at))
+            pdf_bytes = tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    elif _HAS_SUDOKU_RENDERER and _sudoku_supports(xml_bytes):
+        import tempfile, pathlib
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = pathlib.Path(tmp.name)
+        try:
+            _sudoku_render_pdf(xml_bytes, tmp_path, date_str=str(published_at))
             pdf_bytes = tmp_path.read_bytes()
         finally:
             tmp_path.unlink(missing_ok=True)
