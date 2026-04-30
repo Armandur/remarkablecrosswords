@@ -4,13 +4,18 @@ Aktuella uppgifter. Färdiga uppgifter flyttas till `TODO_DONE.md`.
 
 ## Källor
 
-## Keesing-modulen - nya speltyper
+## Keesing - användarguidning
 
-Alla renderare ska ligga i `keesing/`-modulen och **inte** i webapp:en.
-API-åtkomst sker via befintliga fetch-funktioner (GetPuzzleInfo + getxml).
+- [ ] **Förbättra guidning för Keesing-konfiguration** - Låg/medel prio
 
-- [ ] **Sudoku** - PRIORITET
+  Nu när Keesing stöder fyra speltyper (arrowword_plus, crossword, sudoku, tectonic)
+  med många slots och två klient-pooler (dnmag, bn) kan det vara svårt att veta
+  vad man ska fylla i. Möjliga förbättringar:
 
+  - Hjälptext i källformulärens config_json-fält som förklarar klient-ID och slot-format
+  - Länk eller inbyggd referens till tillgängliga slots per klient/gametype
+  - Eventuellt: slot-väljare i UI:t som listar tillgängliga slots med förhandsvisning
+    av titel och datum (via GetPuzzleInfo)
 
 ## Rikare metadata i filnamnsättaren
 
