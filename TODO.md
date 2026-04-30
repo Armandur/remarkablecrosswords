@@ -19,7 +19,7 @@ Aktuella uppgifter. Färdiga uppgifter flyttas till `TODO_DONE.md`.
 
 ## Rikare metadata i filnamnsättaren
 
-- [ ] **Generellt extra-fält-system för filnamnsmallar** - Medel prio
+- [x] **Generellt extra-fält-system för filnamnsmallar** - Klar
 
   Varje källtyp ska kunna exponera källspecifika metadatafält som användaren kan
   använda i filnamnsmallen via syntaxen `{extra:FÄLTNAMN}`.
